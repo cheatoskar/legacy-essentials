@@ -4,6 +4,7 @@
 
 #include "autosave.h"
 #include "log.h"
+#include "profilediag.h"
 
 namespace {
 constexpr unsigned kLoaderApi = 1; // must match loader.cpp
@@ -21,10 +22,13 @@ extern "C" int __cdecl EswcAutosaveInit(unsigned loaderApi) {
     return 1;
 }
 
-BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID) {
+BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved) {
     if (reason == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(inst);
         autosave::logOpen();
+    } else if (reason == DLL_PROCESS_DETACH && reserved) {
+        // the process exits through ExitProcess (the game closed itself); a kill or a crash never comes here
+        autosave::profilediag::processExit();
     }
     return TRUE;
 }

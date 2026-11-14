@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Log for "my pad bindings are reset at every start"** (log only, nothing changed): at start the profile folder (`GameData\Profiles` next to the exe) with whether it is under Program Files, whether the game may write there, UAC virtualization of the game process and a VirtualStore copy of the folder, and each profile with size and time. While the game runs, every profile save (`profiles: profile saved by the game: ...`) and whether the saved profile names the pads (their bindings are stored under the DirectInput instance GUID). The controller fix logs each pad's bindings in the current profile once at start (`bindings at start: ...`). A last line `game closed normally` when the game exits by itself; without it the game was killed or crashed. No profile contents are logged. The Horizon Client's controller fix, the same code.
+
 ## 1.3.1
 
 - No Sounds slider: the games' own options have Volume and Music only, and the slider was not heard on ESWC. A `Sounds=` value in the ini is no longer put into the game. The Horizon Client's Game settings 1.1.1, the same code.

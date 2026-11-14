@@ -7,6 +7,7 @@
 #include <wchar.h>
 
 #include "../src/coexist.h"
+#include "../src/profilepath.h"
 #include "../src/settings.h"
 
 using namespace autosave;
@@ -195,11 +196,42 @@ static void plans() {
     check(p.horizon && !p.loginFix && !p.menu, "client already loaded at our start");
 }
 
+// profile diagnostics: VirtualStore path, Program Files test, profile names, GBX compression flag, GUID search
+static void profilePaths() {
+    using namespace autosave::profilepath;
+    check(virtualStore(L"C:\\Program Files (x86)\\TM\\GameData\\Profiles", L"C:\\Users\\u\\AppData\\Local") ==
+              L"C:\\Users\\u\\AppData\\Local\\VirtualStore\\Program Files (x86)\\TM\\GameData\\Profiles",
+          "VirtualStore: the path without its drive below %LOCALAPPDATA%\\VirtualStore");
+    check(virtualStore(L"D:\\Games\\TM", L"C:\\L\\") == L"C:\\L\\VirtualStore\\Games\\TM", "VirtualStore: other drive, trailing slash");
+    check(virtualStore(L"\\\\server\\share\\TM", L"C:\\L").empty() && virtualStore(L"C:\\TM", L"").empty(), "VirtualStore: UNC or no LOCALAPPDATA: none");
+    check(under(L"C:\\Program Files (x86)\\TM\\GameData", L"C:\\Program Files (x86)") &&
+              under(L"c:\\program files (x86)\\TM", L"C:\\Program Files (x86)\\"),
+          "under Program Files: any case, trailing slash");
+    check(!under(L"C:\\Program Files (x86)\\TM", L"C:\\Program Files") && !under(L"C:\\Games\\TM", L"C:\\Program Files") &&
+              !under(L"C:\\TM", L""),
+          "under: whole folder names only");
+    check(isProfileFile(L"Player.Profile.Gbx") && isProfileFile(L"x.PROFILE.GBX") && !isProfileFile(L".Profile.Gbx") &&
+              !isProfileFile(L"Player.Replay.Gbx") && !isProfileFile(nullptr),
+          "profile file names");
+    const uint8_t gu[] = {'G', 'B', 'X', 6, 0, 'B', 'U', 'U', 'R'}, gc[] = {'G', 'B', 'X', 6, 0, 'B', 'U', 'C', 'R'};
+    const uint8_t old[] = {'G', 'B', 'X', 2, 0, 'B', 'U', 'C'}, junk[] = {'X', 'B', 'X', 6, 0, 'B', 'U', 'C'};
+    check(gbxBodyCompressed(gu, sizeof(gu)) == 0 && gbxBodyCompressed(gc, sizeof(gc)) == 1, "GBX body: U / C");
+    check(gbxBodyCompressed(old, sizeof(old)) == -1 && gbxBodyCompressed(junk, sizeof(junk)) == -1 && gbxBodyCompressed(gu, 5) == -1,
+          "GBX body: unknown header");
+    const char text[] = "..xx{FE7B39E0-CFA8-11F1-8001-444553540000}..";
+    const uint8_t* t = reinterpret_cast<const uint8_t*>(text);
+    check(containsText(t, sizeof(text) - 1, "fe7b39e0-cfa8-11f1-8001-444553540000"), "GUID found in any case");
+    check(!containsText(t, sizeof(text) - 1, "fe7b39e0-cfa8-11f1-8001-444553540001") && !containsText(t, 3, "fe7b") &&
+              !containsText(t, sizeof(text) - 1, ""),
+          "GUID: other, cut or empty text not found");
+}
+
 int main() {
     hotkeys();
     ini();
     values();
     plans();
+    profilePaths();
     printf("essentials_test: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

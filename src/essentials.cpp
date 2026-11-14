@@ -25,6 +25,7 @@
 #include "gamesettings.h"
 #include "log.h"
 #include "overlay.h"
+#include "profilediag.h"
 #include "shim/host/host.h"
 
 namespace autosave {
@@ -130,6 +131,7 @@ LRESULT CALLBACK msgHook(int code, WPARAM wp, LPARAM lp) {
     if (code == HC_ACTION && wp == PM_REMOVE) {
         if (!g_lateDone) lateStart();
         const MSG* m = reinterpret_cast<const MSG*>(lp);
+        if (m && m->message == WM_QUIT) profilediag::quitSeen(); // log only
         if (m && m->message == WM_NULL && m->wParam == kMarker) {
             InterlockedExchange(&g_queued, 0);
             controller::tick();
@@ -339,6 +341,8 @@ void start(const ExeId& exe, const Settings& settings, uintptr_t exeBase, DWORD 
     } else if (!gameHasLoginFix()) {
         AS_LOG("login fix: not needed for this game, nothing changed");
     }
+    // log only: the profile folder, write access, VirtualStore, and from now on every profile save
+    profilediag::start();
     // volumes and window mode: into the game's settings now, before it makes its Direct3D device and audio
     gamesettings::start(g_base, g_timestamp, g_set, plan.gameSettings, plan.menu);
     if (plan.menu) overlay::install(g_set.menuKey, &drawMenu);

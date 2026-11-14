@@ -256,6 +256,7 @@ powershell -ExecutionPolicy Bypass -File tools/sync-horizon.ps1 -SettingsCommit 
 | `legacy_test` | Sunrise/Original autosave against a fake game image; with exes also hash, prologues, addresses |
 | `realexe_test` | the vendored controller fix's and game settings' code checks and the login fix's import slots against the real exes (read only) |
 | `tmxcopy_test <outdir> [--login L] [--time ms] [--ref DIR] <replays…>` | the TMX-copy conversion on replay files |
+| `profilediag_test` | the profile diagnostics on a profile folder next to the test exe: start lines, a save seen, the pad check, the exit line (about 17 s) |
 | `onlinetest` | the login fix inside a test exe, one real HTTPS request to the ESWC server (by hand) |
 | `test\run_harness.cmd` | the loader in a test program: with and without the mod, with a `dinput8.chain.dll`, and as `dinput8.chain.dll` itself |
 

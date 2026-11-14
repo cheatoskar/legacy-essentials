@@ -25,7 +25,8 @@ void logOpen() {
                          FILE_ATTRIBUTE_NORMAL, nullptr);
 }
 
-void logLine(const char* fmt, ...) {
+namespace {
+void logLineV(bool atExit, const char* fmt, va_list ap) {
     if (!g_init || g_file == INVALID_HANDLE_VALUE) return;
     char buf[1024];
     SYSTEMTIME t;
@@ -33,17 +34,29 @@ void logLine(const char* fmt, ...) {
     int len = _snprintf_s(buf, sizeof(buf), _TRUNCATE, "%04u-%02u-%02u %02u:%02u:%02u.%03u  ", t.wYear, t.wMonth,
                           t.wDay, t.wHour, t.wMinute, t.wSecond, t.wMilliseconds);
     if (len < 0) len = 0;
-    va_list ap;
-    va_start(ap, fmt);
     int m = _vsnprintf_s(buf + len, sizeof(buf) - len - 2, _TRUNCATE, fmt, ap);
-    va_end(ap);
     len = (m < 0) ? (int)strlen(buf) : len + m;
     buf[len++] = '\r';
     buf[len++] = '\n';
-    EnterCriticalSection(&g_lock);
+    const bool locked = atExit ? TryEnterCriticalSection(&g_lock) != FALSE : (EnterCriticalSection(&g_lock), true);
     DWORD written = 0;
     WriteFile(g_file, buf, (DWORD)len, &written, nullptr);
-    LeaveCriticalSection(&g_lock);
+    if (locked) LeaveCriticalSection(&g_lock);
+}
+} // namespace
+
+void logLine(const char* fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    logLineV(false, fmt, ap);
+    va_end(ap);
+}
+
+void logLineAtExit(const char* fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    logLineV(true, fmt, ap);
+    va_end(ap);
 }
 
 } // namespace autosave
