@@ -13,7 +13,7 @@
 
 Three files next to the game exe, no installer, no other program needed. The same features are also part of the [Horizon Client](https://github.com/cheatoskar/horizon-client) (its "Legacy Essentials" group); you need only one of the two, see [With the Horizon Client](#with-the-horizon-client).
 
-Version 1.3.1. MIT licence. The repository is still named `eswc-autosave`; a rename to `legacy-essentials` is planned ([docs/rename-legacy-essentials.md](docs/rename-legacy-essentials.md)).
+Version 1.4.0. MIT licence. The repository was renamed from `eswc-autosave` to `legacy-essentials` on 2026-11-13; the file names stay.
 
 **[Download the latest release](https://github.com/cheatoskar/legacy-essentials/releases/latest)** · [Games](#what-works-in-which-game) · [Install](#install) · [Menu](#menu) · [What it does](#what-it-does) · [With the Horizon Client](#with-the-horizon-client) · [Settings](#settings-eswc_autosaveini) · [Known issues](#known-issues) · [Build](#build) · [TM Horizon family](#tm-horizon-family)
 
@@ -27,7 +27,7 @@ Six projects, built to work together. TM Horizon installs and updates the others
 |---|---|---|---|---|
 | **TM Horizon** | Launcher for every TrackMania game on Windows: library, mods, maps, servers, statistics. Installs and updates Horizon Client, Legacy Essentials and TM Vibrant Shaders. | All, from TrackMania (2003) to Trackmania (2020) | Installer from the releases (0.5.2, Launcher Preview) | [cheatoskar/tm-horizon](https://github.com/cheatoskar/tm-horizon) |
 | **Horizon Client** | In-game menu and mod loader with modules: Legacy Essentials, TMX Browser, TMX Upload, WR Hunter, Input Display, Horizon Performance, Horizon Scripts. | ESWC, Sunrise, Original; TMNF and TMUF through TMLoader (experimental) | TM Horizon (game page), or a zip per game (0.3.2) | [cheatoskar/horizon-client](https://github.com/cheatoskar/horizon-client) |
-| **Legacy Essentials** (this repo) | Autosave, controller fix, login fix and game settings. A standalone `dinput8.dll` mod with its own menu (`Ctrl+F2`). The same features are the "Legacy Essentials" group in Horizon Client. | ESWC, Sunrise, Original | A zip per game (1.3.1); TM Horizon installs it on ESWC | [cheatoskar/legacy-essentials](https://github.com/cheatoskar/legacy-essentials) |
+| **Legacy Essentials** (this repo) | Autosave, controller fix, login fix and game settings. A standalone `dinput8.dll` mod with its own menu (`Ctrl+F2`). The same features are the "Legacy Essentials" group in Horizon Client. | ESWC, Sunrise, Original | A zip per game (1.4.0); TM Horizon installs it on ESWC | [cheatoskar/legacy-essentials](https://github.com/cheatoskar/legacy-essentials) |
 | **Legacy Randomizer** | Random Map Challenge with maps from TMX, inside the game. A Horizon Client module. | ESWC, Sunrise, Original (solo) | A zip with Horizon Client, or the plugin alone (0.3.1) | [cheatoskar/legacy-randomizer](https://github.com/cheatoskar/legacy-randomizer) |
 | **TM Vibrant Shaders** | Lighting, weather, skies, photos, clips and video export. Standalone, or as four Horizon Client modules. | TMNF, TMUF, TM2; ESWC, Sunrise, Original experimental | Setup or ModLoader server (1.6.1), Horizon modules zip (2.0.1); TM Horizon installs it on TMNF, TMUF and ESWC | [cheatoskar/TM-Vibrant-Shaders](https://github.com/cheatoskar/TM-Vibrant-Shaders) |
 | ***For developers*** | | | | |
@@ -219,7 +219,7 @@ The client's `Horizon-Install.cmd` does this for you: it keeps a `dinput8.dll` i
 
 ## Status
 
-Version 1.3.1. Autosave on ESWC: tested on Windows 11 (solo, LAN with nostalgic-completionist, online server, login). Sunrise and Original autosave: tested against a fake game image and the real exes on disk; not yet in a real race. Controller fix and login fix: the Horizon Client's code; in the client the controller fix is in test, the login fix is tested on ESWC. The menu: tested on a Direct3D 9 test window (`build\test\menu_test.exe`), not yet in the games. Volume, Music, Window mode: from a study of the three exes, checked against them on disk and against a fake game; not yet in the games.
+Version 1.4.0. Autosave on ESWC: tested on Windows 11 (solo, LAN with nostalgic-completionist, online server, login). Sunrise and Original autosave: tested against a fake game image and the real exes on disk; not yet in a real race. Controller fix and login fix: the Horizon Client's code; in the client the controller fix is in test, the login fix is tested on ESWC; on Sunrise it installs and the first request goes out (full login not tested yet). Keep bindings: tested in the game on Sunrise (bindings stay after a restart). Crazy mode autosave: tested against the real exes and a fake game, not yet in the game. The menu: tested on a Direct3D 9 test window (`build\test\menu_test.exe`), not yet in the games. Volume, Music, Window mode: from a study of the three exes, checked against them on disk and against a fake game; not yet in the games.
 
 ## Known issues
 
