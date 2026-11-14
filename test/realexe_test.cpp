@@ -1,8 +1,10 @@
 // Checks the vendored Horizon code against the real game exes on disk (read only, nothing is run):
 //   - the controller fix's game table: PE timestamp, every code signature and table entry (GameBackend::verify) and
 //     the late-pad bindings' signatures (Binder::verify)
-//   - the login fix's import slots: ESWC 0x00aca340 and Original 0x00a162d4 are the exe's HttpOpenRequestA slot
+//   - the login fix's import slots: ESWC 0x00aca340, Original 0x00a162d4 and Sunrise 0x00a1a2dc are the exe's
+//     HttpOpenRequestA slot; Sunrise 0x00a1a2d8 InternetConnectA and 0x00a1a2d4 InternetCloseHandle
 //   - the menu's way in: the exe imports Direct3DCreate9 or GetProcAddress
+//   - keep bindings: the bytes at the profile load's reset call (Sunrise, Original)
 //   - the game settings' table: PE timestamp, the code, pointer and reflection-member signatures of the volumes and
 //     of the window mode and of the game's own fullscreen switch (gs::Game::audioOk / displayOk / toggleOk)
 // The exe image is laid out at its link address 0x400000 in this process (the exes have no relocations).
@@ -18,6 +20,10 @@
 
 #include "../vendor/horizon/controller-hotplug/hp_game.h"
 #include "../vendor/horizon/game-settings/gs_game.h"
+#include "../vendor/horizon/host/keepbindings_sites.h"
+#include "../src/games.h"
+#include "../src/log.h"
+#include "../src/shim/host/host.h"
 
 #include <set>
 
@@ -116,9 +122,74 @@ static bool runOne(const wchar_t* path, const char* game) {
                     g->toggle.ptrCount);
         check(settings.toggleOk(), what);
     }
-    if (strcmp(game, "eswc") == 0 || strcmp(game, "original") == 0) {
-        const DWORD want = strcmp(game, "eswc") == 0 ? 0x00aca340 - 0x400000 : 0x00a162d4 - 0x400000;
+    {
+        const DWORD want = strcmp(game, "eswc") == 0       ? 0x00aca340 - 0x400000
+                           : strcmp(game, "original") == 0 ? 0x00a162d4 - 0x400000
+                                                           : 0x00a1a2dc - 0x400000;
         check(iatRva(img, "WININET.dll", "HttpOpenRequestA") == want, "login fix: HttpOpenRequestA import slot as in essentials.cpp");
+    }
+    if (strcmp(game, "sunrise") == 0) {
+        check(iatRva(img, "WININET.dll", "InternetConnectA") == 0x00a1a2d8 - 0x400000,
+              "login fix: InternetConnectA import slot as in essentials.cpp (Sunrise master names)");
+        check(iatRva(img, "WININET.dll", "InternetCloseHandle") == 0x00a1a2d4 - 0x400000,
+              "login fix: InternetCloseHandle import slot as in essentials.cpp");
+    }
+    if (strcmp(game, "sunrise") == 0 || strcmp(game, "original") == 0) {
+        const horizon::keepbind::Site& s = strcmp(game, "original") == 0 ? horizon::keepbind::original() : horizon::keepbind::sunrise();
+        check(horizon::keepbind::check(s, img + (s.call - 10 - 0x400000)) == horizon::keepbind::State::Original,
+              "keep bindings: the profile load's reset call is the one the fix redirects");
+        // the real install on this copy of the image (no app yet: its global is 0 in the file)
+        const uintptr_t imgBase = reinterpret_cast<uintptr_t>(img);
+        const bool orig = strcmp(game, "original") == 0;
+        check(horizon::keepBindingsInstall(imgBase, orig) &&
+                  horizon::keepbind::check(s, img + (s.call - 10 - 0x400000)) == horizon::keepbind::State::Kept,
+              "keep bindings: installed on the image, the call now goes to the defaults pass");
+        check(horizon::keepBindingsInstall(imgBase, orig), "keep bindings: a second install sees it done and changes nothing");
+        static uint8_t fakeApp[0x200]; // a fake app with 1 loaded profile (outside the image: nothing else is touched)
+        const uint32_t app = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(fakeApp));
+        memcpy(img + (s.appGlobal - 0x400000), &app, 4);
+        const uint32_t one = 1;
+        memcpy(fakeApp + s.appProfiles, &one, 4);
+        uint8_t back[5];
+        horizon::keepbind::callBytes(s.call, s.resetFn, back);
+        memcpy(img + (s.call - 0x400000), back, 5);
+        check(!horizon::keepBindingsInstall(imgBase, orig) &&
+                  horizon::keepbind::check(s, img + (s.call - 10 - 0x400000)) == horizon::keepbind::State::Original,
+              "keep bindings: profiles already loaded -> too late, nothing changed");
+    }
+    {
+        // Crazy mode autosave (games.h CrazySite): the two race classes' vtables, the race end slot, the shared
+        // finish slot before it, both prologues and the new-ghost counter the Crazy race end raises.
+        const autosave::Game gm = strcmp(game, "eswc") == 0       ? autosave::Game::Eswc
+                                  : strcmp(game, "original") == 0 ? autosave::Game::Original
+                                                                  : autosave::Game::Sunrise;
+        const autosave::CrazySite* c = autosave::crazySite(gm);
+        auto u32 = [&](uintptr_t link) { return *reinterpret_cast<const uint32_t*>(img + (link - 0x400000)); };
+        auto bytes = [&](uintptr_t link) { return img + (link - 0x400000); };
+        check(u32(c->vtSolo + 4 * c->endSlot) == c->soloEnd, "crazy: CTrackManiaRace1P vtable race-end slot = the solo race end");
+        check(u32(c->vtCrazy + 4 * c->endSlot) == c->crazyEnd, "crazy: CTrackManiaRace1PCrazy overrides that slot with its own race end");
+        check(u32(c->vtSolo + 4 * (c->endSlot - 1)) == c->finishCaller && u32(c->vtCrazy + 4 * (c->endSlot - 1)) == c->finishCaller,
+              "crazy: the slot before it is the same function in both classes");
+        const uint8_t* fc = bytes(c->finishCaller + 9);
+        check(fc[0] == 0xE8 && c->finishCaller + 9 + 5 + *reinterpret_cast<const int32_t*>(fc + 1) == c->onFinishLine,
+              "crazy: that function calls OnFinishLine (our finish hook sees Crazy finishes)");
+        check(memcmp(bytes(c->crazyEnd), autosave::kCrazyEndPrologue, sizeof(autosave::kCrazyEndPrologue)) == 0 &&
+                  memcmp(bytes(c->soloEnd), autosave::kCrazyEndPrologue, sizeof(autosave::kCrazyEndPrologue)) == 0,
+              "crazy: Crazy race end prologue 83 ec 08 53 55 56 57 (as the solo race end)");
+        // mov edi, [esi+newGhostCount] right after the call that adds the new ghost
+        bool counter = false;
+        const uint8_t* ce = bytes(c->crazyEnd);
+        for (int i = 0; i < 0x160 && !counter; i++)
+            counter = ce[i] == 0x8B && ce[i + 1] == 0xBE && *reinterpret_cast<const uint32_t*>(ce + i + 2) == c->newGhostCount &&
+                      ce[i - 5] == 0xE8;
+        check(counter, "crazy: the race end reads the new-ghost counter after adding the ghost");
+        // the base the Crazy race end reads the replay from: app+0x130 (Sunrise/Original), app+0x144 (ESWC)
+        const uint32_t appReplay = gm == autosave::Game::Eswc ? 0x144 : static_cast<uint32_t>(autosave::legacy_off::kAppReplay);
+        bool replay = false;
+        for (int i = 0; i < 0x160 && !replay; i++) replay = ce[i] == 0x8B && ce[i + 1] == 0xBA && *reinterpret_cast<const uint32_t*>(ce + i + 2) == appReplay;
+        check(replay, "crazy: the race end takes the run's replay from the app member the autosave saves");
+        if (const autosave::LegacyGame* lg = autosave::legacyGame(gm))
+            check(lg->soloRaceEnd == c->soloEnd && lg->onFinishLine == c->onFinishLine, "crazy: same solo race end and OnFinishLine as the legacy table");
     }
     const bool d3d = iatRva(img, "d3d9.dll", "Direct3DCreate9") != 0;
     const bool gpa = iatRva(img, "KERNEL32.dll", "GetProcAddress") != 0;
@@ -129,6 +200,7 @@ static bool runOne(const wchar_t* path, const char* game) {
 }
 
 int wmain(int argc, wchar_t** argv) {
+    autosave::logOpen(); // the keep-bindings lines: eswc_autosave.log next to this exe
     if (argc < 3) {
         printf("realexe_test.exe <exe> eswc|sunrise|original [...]\n");
         return 2;

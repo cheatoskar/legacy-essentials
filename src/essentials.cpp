@@ -25,15 +25,20 @@
 #include "gamesettings.h"
 #include "log.h"
 #include "overlay.h"
+#include "profilediag.h"
 #include "shim/host/host.h"
 
 namespace autosave {
 namespace essentials {
 namespace {
 
-// HttpOpenRequestA import slots (PE import table): ESWC 0x00aca340, Original 0x00a162d4
+// HttpOpenRequestA import slots (PE import table): ESWC 0x00aca340, Original 0x00a162d4, Sunrise 0x00a1a2dc
 constexpr uintptr_t kEswcIatHttpOpenRequestA = 0x00aca340;
 constexpr uintptr_t kOriginalIatHttpOpenRequestA = 0x00a162d4;
+constexpr uintptr_t kSunriseIatHttpOpenRequestA = 0x00a1a2dc;
+// Sunrise only, for its master names (vendor/horizon/host/onlinefix.cpp): InternetConnectA, InternetCloseHandle
+constexpr uintptr_t kSunriseIatInternetConnectA = 0x00a1a2d8;
+constexpr uintptr_t kSunriseIatInternetCloseHandle = 0x00a1a2d4;
 constexpr WPARAM kMarker = 0x4C455353; // 'LESS': a controller step for the game thread
 
 const ExeId* g_exe = nullptr;
@@ -53,8 +58,16 @@ volatile LONG g_queued = 0;
 wchar_t g_lastFolder[MAX_PATH] = L"";
 unsigned g_saved = 0;
 
-bool gameHasLoginFix() { return g_exe && (g_exe->game == Game::Eswc || g_exe->game == Game::Original); }
-uintptr_t loginSlot() { return g_exe->game == Game::Eswc ? kEswcIatHttpOpenRequestA : kOriginalIatHttpOpenRequestA; }
+bool gameHasLoginFix() {
+    return g_exe && (g_exe->game == Game::Eswc || g_exe->game == Game::Original || g_exe->game == Game::Sunrise);
+}
+uintptr_t loginSlot() {
+    switch (g_exe->game) {
+    case Game::Eswc: return kEswcIatHttpOpenRequestA;
+    case Game::Sunrise: return kSunriseIatHttpOpenRequestA;
+    default: return kOriginalIatHttpOpenRequestA;
+    }
+}
 
 const char* gameShort() {
     if (!g_exe) return "";
@@ -77,7 +90,11 @@ bool loginHooked() {
 void installLoginFix() {
     if (g_loginInstalled) return;
     g_loginInstalled = true;
-    horizon::onlineFixInstall(g_base, loginSlot()); // logs "online: fix active" or why not
+    // logs "online: fix active" or why not; Sunrise also sends its master names to the master's IP address
+    if (g_exe->game == Game::Sunrise)
+        horizon::onlineFixInstall(g_base, loginSlot(), kSunriseIatInternetConnectA, kSunriseIatInternetCloseHandle);
+    else
+        horizon::onlineFixInstall(g_base, loginSlot());
     g_loginActive = loginHooked();
 }
 
@@ -130,6 +147,7 @@ LRESULT CALLBACK msgHook(int code, WPARAM wp, LPARAM lp) {
     if (code == HC_ACTION && wp == PM_REMOVE) {
         if (!g_lateDone) lateStart();
         const MSG* m = reinterpret_cast<const MSG*>(lp);
+        if (m && m->message == WM_QUIT) profilediag::quitSeen(); // log only
         if (m && m->message == WM_NULL && m->wParam == kMarker) {
             InterlockedExchange(&g_queued, 0);
             controller::tick();
@@ -278,7 +296,7 @@ void drawMenu(bool* open) {
     default: status("Off"); break;
     }
 
-    // Login fix (ESWC, Original)
+    // Login fix (ESWC, Original, Sunrise)
     if (gameHasLoginFix()) {
         ImGui::Separator();
         bool login = g_set.onlineFix;
@@ -338,6 +356,14 @@ void start(const ExeId& exe, const Settings& settings, uintptr_t exeBase, DWORD 
         else AS_LOG("login fix: OnlineFix=0, nothing changed");
     } else if (!gameHasLoginFix()) {
         AS_LOG("login fix: not needed for this game, nothing changed");
+    }
+    // log only: the profile folder, write access, VirtualStore, and from now on every profile save
+    profilediag::start();
+    // saved bindings (Sunrise, Original): before the game loads the profiles, so at start, not on the first message
+    if (g_exe->game == Game::Sunrise || g_exe->game == Game::Original) {
+        if (plan.horizon) AS_LOG("bindings: the Horizon Client's own (KeepBindings in its host.json); ours stays off");
+        else if (!g_set.keepBindings) AS_LOG("bindings: KeepBindings=0, the game resets the bindings at every start as before");
+        else horizon::keepBindingsInstall(g_base, g_exe->game == Game::Original);
     }
     // volumes and window mode: into the game's settings now, before it makes its Direct3D device and audio
     gamesettings::start(g_base, g_timestamp, g_set, plan.gameSettings, plan.menu);

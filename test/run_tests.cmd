@@ -10,6 +10,7 @@ set "FAIL=0"
 %T%\hp_tests.exe || set "FAIL=1"
 %T%\gs_tests.exe || set "FAIL=1"
 %T%\menu_test.exe || set "FAIL=1"
+%T%\profilediag_test.exe || set "FAIL=1"
 if "%~1"=="" (
     %T%\legacy_test.exe || set "FAIL=1"
     echo SKIP  realexe_test: no exe folder given

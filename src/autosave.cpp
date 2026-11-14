@@ -17,6 +17,8 @@
 // "Save replay" (solo loop FUN_006eb540, menu result 0x12) calls the same SaveReplay with the
 // current replay app+0x144. After a solo finish the race class calls FUN_006c5060 (vtable slot
 // after OnFinishLine), which stops that recording (vtable+0x8c). We save app+0x144 right after it.
+// Crazy mode has its own race end there (FUN_006694a0, games.h CrazySite): it stops the recording only
+// for a run it takes as a new crazy ghost, and only those runs are saved (in both modes).
 //
 // TMX copy (TmxCopy=1): after a LAN/online save, a worker thread re-reads the file the game wrote
 // and, if it holds more than one ghost, writes "<name> TMX.Replay.Gbx" with only the local
@@ -188,6 +190,8 @@ const ExeId* identifyBuild() {
 InlineHook g_finishHook = {kOnFinishLine, {0x8b, 0x44, 0x24, 0x04, 0x83, 0xec, 0x1c}, 7, "CTrackManiaRace::OnFinishLine", nullptr};
 InlineHook g_keepCopyHook = {kKeepCopy, {0x51, 0x56, 0x8b, 0xf1, 0x8b, 0x46, 0x40}, 7, "StopReplayRecordAndKeepCopy", nullptr};
 InlineHook g_soloEndHook = {kSoloRaceEnd, {0x83, 0xec, 0x08, 0x53, 0x55, 0x56, 0x57}, 7, "CTrackManiaRace1P race end", nullptr};
+// Crazy mode: CTrackManiaRace1PCrazy's own race end (games.h, CrazySite; 0x006694a0)
+InlineHook g_crazyEndHook = {0, {0x83, 0xec, 0x08, 0x53, 0x55, 0x56, 0x57}, 7, "CTrackManiaRace1PCrazy race end", nullptr};
 
 // ---------------------------------------------------------------- state ---------------------
 // All of it is touched only from the game thread that runs the race (hooks) and the window
@@ -197,8 +201,10 @@ DWORD g_mainThread = 0;
 int g_finishDepth = 0;      // inside OnFinishLine
 unsigned g_copyCounter = 0; // KeepCopy calls that produced a new copy
 void* g_lastCopy = nullptr;
-unsigned g_soloEndCounter = 0; // solo race-end calls
+unsigned g_soloEndCounter = 0; // solo race-end calls (Crazy included)
 void* g_lastSoloReplay = nullptr;
+bool g_lastEndCrazy = false;   // the last race end was the Crazy one ...
+bool g_lastCrazyTaken = false; // ... and it took the run as a new crazy ghost
 bool g_armed = false;       // a local finish is waiting for its copy
 void* g_armedRace = nullptr; // ... made by this race object
 unsigned g_armedTime = 0;
@@ -477,7 +483,9 @@ void __fastcall finishDetour(void* race, void* edx, void* player) {
         const bool newBest = best != bestBefore || time < bestBefore;
         AS_LOG("finish: local player, time=%u best=%d (best before %d)%s", time, (int)best, (int)bestBefore,
                newBest ? "  NEW BEST" : "");
-        if (g_cfg.bestOnly && !newBest) {
+        // Crazy mode: the game itself picks the runs it keeps (new crazy ghosts); Mode=best does not apply.
+        const bool crazyRace = field<uintptr_t>(race, 0) == rebase(crazySite(Game::Eswc)->vtCrazy);
+        if (g_cfg.bestOnly && !newBest && !crazyRace) {
             AS_LOG("finish: Mode=best and no new best, not saving");
             g_armed = false;
             return;
@@ -485,7 +493,9 @@ void __fastcall finishDetour(void* race, void* edx, void* player) {
         if (g_copyCounter != copiesBefore) {
             saveNow(g_lastCopy, false, "finish", static_cast<int>(time)); // the game made the copy during the finish already
         } else if (g_soloEndCounter != soloBefore) {
-            saveNow(g_lastSoloReplay, true, "finish", static_cast<int>(time));
+            if (!g_lastEndCrazy) saveNow(g_lastSoloReplay, true, "finish", static_cast<int>(time));
+            else if (g_lastCrazyTaken) saveNow(g_lastSoloReplay, true, "crazy ghost", static_cast<int>(time));
+            else AS_LOG("[Crazy] finish (time=%u) did not become a crazy ghost, the game keeps no replay of it: not saved", time);
         } else {
             g_armed = true;
             g_armedRace = race;
@@ -546,11 +556,51 @@ void __fastcall soloEndDetour(void* race, void* edx) {
     g_app = app;
     g_soloEndCounter++;
     g_lastSoloReplay = replay;
+    g_lastEndCrazy = false;
     noteThread("Solo race end");
     if (g_armed && g_finishDepth == 0 && g_armedRace == race) {
         g_armed = false;
         AS_LOG("[Solo] race end after the finish (time=%u), saving the race replay", g_armedTime);
         saveNow(replay, true, "finish", static_cast<int>(g_armedTime));
+    }
+}
+
+// Crazy mode's race end: it stops the recording only for a run it takes as a new crazy ghost (one more in
+// race+newGhostCount). Only those runs are saved; the others the game keeps recording over.
+void __fastcall crazyEndDetour(void* race, void* edx) {
+    const size_t countOff = crazySite(Game::Eswc)->newGhostCount;
+    unsigned ghostsBefore = 0;
+    __try {
+        ghostsBefore = field<unsigned>(race, countOff);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        ghostsBefore = 0;
+    }
+    reinterpret_cast<FnRaceVoid>(g_crazyEndHook.trampoline)(race, edx);
+    void* app = nullptr;
+    void* replay = nullptr;
+    bool taken = false;
+    __try {
+        app = field<void*>(race, kRaceApp);
+        replay = app ? field<void*>(app, kAppCurReplay) : nullptr;
+        taken = replay && field<unsigned>(race, countOff) == ghostsBefore + 1 && field<int>(replay, kReplayRecording) == 0;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return;
+    }
+    if (!app) return;
+    g_app = app;
+    g_soloEndCounter++;
+    g_lastSoloReplay = replay;
+    g_lastEndCrazy = true;
+    g_lastCrazyTaken = taken;
+    noteThread("Crazy race end");
+    if (g_armed && g_finishDepth == 0 && g_armedRace == race) {
+        g_armed = false;
+        if (!taken) {
+            AS_LOG("[Crazy] finish (time=%u) did not become a crazy ghost, the game keeps no replay of it: not saved", g_armedTime);
+            return;
+        }
+        AS_LOG("[Crazy] the run became a crazy ghost (time=%u), saving the race replay", g_armedTime);
+        saveNow(replay, true, "crazy ghost", static_cast<int>(g_armedTime));
     }
 }
 
@@ -626,6 +676,10 @@ bool autosaveInstall() {
     }
     const bool b = installHook(g_keepCopyHook, reinterpret_cast<void*>(&keepCopyDetour), g_base);
     const bool c = installHook(g_soloEndHook, reinterpret_cast<void*>(&soloEndDetour), g_base);
+    g_crazyEndHook.link = crazySite(Game::Eswc)->crazyEnd;
+    const bool d = installHook(g_crazyEndHook, reinterpret_cast<void*>(&crazyEndDetour), g_base);
+    AS_LOG(d ? "Crazy mode: saving each run that becomes a crazy ghost"
+             : "Crazy mode: race end hook missing, Crazy runs are not saved");
     if (g_cfg.testKey) {
         g_msgHook = SetWindowsHookExW(WH_GETMESSAGE, getMsgProc, nullptr, g_mainThread);
         AS_LOG(g_msgHook ? "test key 0x%02X active (saves the previous/last replay now)" : "test key 0x%02X: hook failed",

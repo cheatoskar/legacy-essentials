@@ -7,6 +7,9 @@
 #include <wchar.h>
 
 #include "../src/coexist.h"
+#include "../vendor/horizon/host/keepbindings_sites.h"
+#include "../src/profilepath.h"
+#include "../vendor/horizon/host/onlinefix_names.h"
 #include "../src/settings.h"
 
 using namespace autosave;
@@ -154,7 +157,7 @@ static void plans() {
     Plan p = makePlan(none, Stage::Start, true, true, true, true, true);
     check(!p.horizon && p.loginFix && p.menu && p.controller && p.autosave, "standalone: everything ours");
     p = makePlan(none, Stage::Start, false, true, true, true, true);
-    check(!p.loginFix, "Sunrise: no login fix");
+    check(!p.loginFix, "a game without a login fix: none");
     p = makePlan(none, Stage::Start, true, false, false, false, false);
     check(!p.loginFix && !p.menu && !p.controller && !p.autosave, "standalone, all switched off");
     check(p.gameSettings, "standalone: game settings ours");
@@ -195,11 +198,120 @@ static void plans() {
     check(p.horizon && !p.loginFix && !p.menu, "client already loaded at our start");
 }
 
+// profile diagnostics: VirtualStore path, Program Files test, profile names, GBX compression flag, GUID search
+static void profilePaths() {
+    using namespace autosave::profilepath;
+    check(virtualStore(L"C:\\Program Files (x86)\\TM\\GameData\\Profiles", L"C:\\Users\\u\\AppData\\Local") ==
+              L"C:\\Users\\u\\AppData\\Local\\VirtualStore\\Program Files (x86)\\TM\\GameData\\Profiles",
+          "VirtualStore: the path without its drive below %LOCALAPPDATA%\\VirtualStore");
+    check(virtualStore(L"D:\\Games\\TM", L"C:\\L\\") == L"C:\\L\\VirtualStore\\Games\\TM", "VirtualStore: other drive, trailing slash");
+    check(virtualStore(L"\\\\server\\share\\TM", L"C:\\L").empty() && virtualStore(L"C:\\TM", L"").empty(), "VirtualStore: UNC or no LOCALAPPDATA: none");
+    check(under(L"C:\\Program Files (x86)\\TM\\GameData", L"C:\\Program Files (x86)") &&
+              under(L"c:\\program files (x86)\\TM", L"C:\\Program Files (x86)\\"),
+          "under Program Files: any case, trailing slash");
+    check(!under(L"C:\\Program Files (x86)\\TM", L"C:\\Program Files") && !under(L"C:\\Games\\TM", L"C:\\Program Files") &&
+              !under(L"C:\\TM", L""),
+          "under: whole folder names only");
+    check(isProfileFile(L"Player.Profile.Gbx") && isProfileFile(L"x.PROFILE.GBX") && !isProfileFile(L".Profile.Gbx") &&
+              !isProfileFile(L"Player.Replay.Gbx") && !isProfileFile(nullptr),
+          "profile file names");
+    const uint8_t gu[] = {'G', 'B', 'X', 6, 0, 'B', 'U', 'U', 'R'}, gc[] = {'G', 'B', 'X', 6, 0, 'B', 'U', 'C', 'R'};
+    const uint8_t old[] = {'G', 'B', 'X', 2, 0, 'B', 'U', 'C'}, junk[] = {'X', 'B', 'X', 6, 0, 'B', 'U', 'C'};
+    check(gbxBodyCompressed(gu, sizeof(gu)) == 0 && gbxBodyCompressed(gc, sizeof(gc)) == 1, "GBX body: U / C");
+    check(gbxBodyCompressed(old, sizeof(old)) == -1 && gbxBodyCompressed(junk, sizeof(junk)) == -1 && gbxBodyCompressed(gu, 5) == -1,
+          "GBX body: unknown header");
+    const char text[] = "..xx{FE7B39E0-CFA8-11F1-8001-444553540000}..";
+    const uint8_t* t = reinterpret_cast<const uint8_t*>(text);
+    check(containsText(t, sizeof(text) - 1, "fe7b39e0-cfa8-11f1-8001-444553540000"), "GUID found in any case");
+    check(!containsText(t, sizeof(text) - 1, "fe7b39e0-cfa8-11f1-8001-444553540001") && !containsText(t, 3, "fe7b") &&
+              !containsText(t, sizeof(text) - 1, ""),
+          "GUID: other, cut or empty text not found");
+}
+
+// a GBX v6 "BUCR" file whose LZO body cuts the GUID with a back-reference, as Sunrise's profile does: the GUID's tail
+// "-444553540000" is copied from earlier in the body, so only the decompressed body holds the whole GUID
+static std::vector<uint8_t> syntheticProfile(bool external, bool cut) {
+    const std::string lit = "x-444553540000;fe7b39e0-cfa8-11f1-8001";
+    std::vector<uint8_t> lz;
+    lz.push_back(static_cast<uint8_t>(17 + lit.size())); // a first literal run
+    lz.insert(lz.end(), lit.begin(), lit.end());
+    const size_t dist = lit.size() - 1; // back to "-444553540000" at offset 1
+    lz.push_back(32 | 11);              // M3 match, length 11 + 2 = 13
+    lz.push_back(static_cast<uint8_t>(((dist - 1) << 2) & 0xff));
+    lz.push_back(static_cast<uint8_t>(((dist - 1) << 2) >> 8));
+    lz.push_back(0x11);                 // end of stream
+    lz.push_back(0);
+    lz.push_back(0);
+    if (cut) lz.resize(lz.size() - 5);
+    std::vector<uint8_t> f = {'G', 'B', 'X', 6, 0, 'B', 'U', 'C', 'R'};
+    auto u32 = [&](uint32_t v) {
+        for (int i = 0; i < 4; i++) f.push_back(static_cast<uint8_t>(v >> (8 * i)));
+    };
+    u32(0x0308C000);  // class
+    u32(3);           // user data
+    f.push_back('a'); f.push_back('b'); f.push_back('c');
+    u32(2);           // numNodes
+    u32(external ? 1 : 0);
+    u32(static_cast<uint32_t>(lit.size() + 13));
+    u32(static_cast<uint32_t>(lz.size()));
+    f.insert(f.end(), lz.begin(), lz.end());
+    return f;
+}
+
+static void compressedProfiles() {
+    using namespace autosave::profilepath;
+    const std::string guid = "fe7b39e0-cfa8-11f1-8001-444553540000";
+    std::vector<uint8_t> f = syntheticProfile(false, false), body;
+    const char* why = "";
+    check(!containsText(f.data(), f.size(), guid), "compressed profile: the GUID is cut in the file itself");
+    check(gbxBody(f.data(), f.size(), body, &why) == 1 && containsText(body.data(), body.size(), guid),
+          "compressed profile: the decompressed body names the pad");
+    const std::vector<uint8_t> ext = syntheticProfile(true, false), cut = syntheticProfile(false, true);
+    check(gbxBody(ext.data(), ext.size(), body, &why) == -1 && body.empty(), "compressed profile: external refs refused");
+    check(gbxBody(cut.data(), cut.size(), body, &why) == -1 && body.empty(), "compressed profile: a cut LZO stream refused");
+    check(gbxBody(f.data(), 20, body, &why) == -1, "compressed profile: truncated header refused");
+    const uint8_t plain[] = {'G', 'B', 'X', 6, 0, 'B', 'U', 'U', 'R'};
+    check(gbxBody(plain, sizeof(plain), body, &why) == 0, "uncompressed body: search the file itself");
+}
+
+// keep bindings: the vendored byte check (the client's unit tests have the full set)
+static void keepBindings() {
+    using namespace horizon::keepbind;
+    const uint8_t exe[15] = {0x8b, 0x44, 0x24, 0x10, 0x8b, 0x40, 0x68, 0x50, 0x8b, 0xce, 0xe8, 0xe6, 0x09, 0x00, 0x00};
+    check(check(sunrise(), exe) == State::Original && check(original(), exe) == State::Original, "keep bindings: the exes' call");
+    uint8_t kept[15], other[15];
+    memcpy(kept, exe, 10);
+    callBytes(sunrise().call, sunrise().defaultsFn, kept + 10);
+    check(check(sunrise(), kept) == State::Kept && kept[11] == 0x16 && kept[12] == 0x0a, "keep bindings: redirected call");
+    memcpy(other, exe, 15);
+    other[12] = 0x0b;
+    check(check(original(), other) == State::Other, "keep bindings: other code refused");
+}
+
+// login fix on Sunrise (the client's vendored onlinefix_names.h): only the two master names, any case, whole name
+static void sunriseNames() {
+    using horizon::sunriseMasterName;
+    check(strcmp(horizon::kSunriseMasterIp, "91.121.54.245") == 0, "Sunrise master IP");
+    const char* g = sunriseMasterName("game.trackmaniasunrise.com");
+    const char* w = sunriseMasterName("WWW.TrackManiaSunrise.COM");
+    check(g && strcmp(g, "game.trackmaniasunrise.com") == 0, "game. name matches");
+    check(w && strcmp(w, "www.trackmaniasunrise.com") == 0, "www. name matches in any case, lower-case result");
+    check(!sunriseMasterName(nullptr) && !sunriseMasterName("") && !sunriseMasterName("trackmaniasunrise.com"), "empty or bare domain: no");
+    check(!sunriseMasterName("game.trackmaniasunrise.com.") && !sunriseMasterName("xgame.trackmaniasunrise.com") &&
+              !sunriseMasterName("game.trackmaniasunrise.co") && !sunriseMasterName("game.trackmaniasunrise.com:443"),
+          "only the whole name");
+    check(!sunriseMasterName("game.trackmanianations.com") && !sunriseMasterName("91.121.54.245"), "other names: no");
+}
+
 int main() {
     hotkeys();
     ini();
     values();
     plans();
+    keepBindings();
+    profilePaths();
+    compressedProfiles();
+    sunriseNames();
     printf("essentials_test: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

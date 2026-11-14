@@ -7,6 +7,7 @@
 
 #include "../vendor/horizon/controller-hotplug/hp_service.h"
 #include "log.h"
+#include "profilediag.h"
 
 namespace autosave {
 namespace controller {
@@ -76,6 +77,13 @@ State init(uintptr_t exeBase, uint32_t exeTimestamp, KickFn kick, ToastFn toast,
 
 void tick() {
     if (g_service) g_service->tick(); // paused: Service::tick only takes the worker's log notes
+    static bool padsSent = false;
+    if (!padsSent && g_backend && g_backend->startPads()) { // the bindings at start were logged: check the profiles
+        padsSent = true;
+        std::vector<std::string> guids;
+        for (const auto& p : *g_backend->startPads()) guids.push_back(p.guid);
+        profilediag::setPads(guids);
+    }
 }
 
 void setEnabled(bool on) {

@@ -64,6 +64,36 @@ constexpr size_t kChallengeName = 0x128;    // CConstructionChallenge.ChallengeN
 constexpr size_t kFidsGetFullPath = 0xac;   // CSystemFids vtable: GetFullPath(CFastStringInt& out)
 } // namespace legacy_off
 
+// Crazy mode (solo menu "Crazy", class CTrackManiaRace1PCrazy, id 0x24079000). Its vtable overrides the solo
+// race end with its own function, so the solo race-end hook never runs there. That function takes the run as a
+// new crazy ghost only when it is faster than the slowest crazy ghost: then it stops the recording of the run's
+// replay (vtable+0x8c, as the solo race end) and adds the ghost, which raises newGhostCount by one. Otherwise
+// the replay keeps recording and nothing is added. The finish itself goes through the same OnFinishLine call
+// as the solo race (the vtable slot before the race end is the same function in both classes).
+// Found statically in all three exes (class registration -> constructor -> vtable); test/realexe_test.cpp
+// checks every value below against the exes on disk.
+struct CrazySite {
+    uintptr_t vtSolo;        // CTrackManiaRace1P vtable (from its constructor)
+    uintptr_t vtCrazy;       // CTrackManiaRace1PCrazy vtable (from its constructor)
+    unsigned endSlot;        // race end slot: 88 (Sunrise, Original), 104 (ESWC)
+    uintptr_t soloEnd;       // vtSolo[endSlot]: the solo race end we hook already
+    uintptr_t crazyEnd;      // vtCrazy[endSlot]: the Crazy race end, hooked (prologue below)
+    uintptr_t finishCaller;  // vtSolo[endSlot - 1] == vtCrazy[endSlot - 1]: calls OnFinishLine at +9
+    uintptr_t onFinishLine;  // CTrackManiaRace::OnFinishLine
+    size_t newGhostCount;    // race member: crazy ghosts this race added (the Crazy race end raises it by one)
+};
+constexpr unsigned char kCrazyEndPrologue[7] = {0x83, 0xec, 0x08, 0x53, 0x55, 0x56, 0x57}; // all three exes
+
+inline const CrazySite* crazySite(Game g) {
+    static const CrazySite kSunrise = {0x00a4c438, 0x00a48a30, 88, 0x007dd7b0, 0x0078b6e0, 0x007dd680, 0x007ec7a0, 0x490};
+    static const CrazySite kOriginal = {0x00a48138, 0x00a44730, 88, 0x007dc250, 0x0078a540, 0x007dc120, 0x007ead30, 0x43c};
+    static const CrazySite kEswc = {0x00af1390, 0x00aed830, 104, 0x006c5060, 0x006694a0, 0x006c4f30, 0x006d9f50, 0x70c};
+    if (g == Game::Sunrise) return &kSunrise;
+    if (g == Game::Original) return &kOriginal;
+    if (g == Game::Eswc) return &kEswc;
+    return nullptr;
+}
+
 inline const ExeId* knownExes(int* count) {
     static const ExeId k[] = {
         {Game::Eswc, "TmNationsESWC 0.1.7.9 (unofficial 1.80 patch)",
