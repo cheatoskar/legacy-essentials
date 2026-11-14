@@ -226,12 +226,59 @@ static void profilePaths() {
           "GUID: other, cut or empty text not found");
 }
 
+// a GBX v6 "BUCR" file whose LZO body cuts the GUID with a back-reference, as Sunrise's profile does: the GUID's tail
+// "-444553540000" is copied from earlier in the body, so only the decompressed body holds the whole GUID
+static std::vector<uint8_t> syntheticProfile(bool external, bool cut) {
+    const std::string lit = "x-444553540000;fe7b39e0-cfa8-11f1-8001";
+    std::vector<uint8_t> lz;
+    lz.push_back(static_cast<uint8_t>(17 + lit.size())); // a first literal run
+    lz.insert(lz.end(), lit.begin(), lit.end());
+    const size_t dist = lit.size() - 1; // back to "-444553540000" at offset 1
+    lz.push_back(32 | 11);              // M3 match, length 11 + 2 = 13
+    lz.push_back(static_cast<uint8_t>(((dist - 1) << 2) & 0xff));
+    lz.push_back(static_cast<uint8_t>(((dist - 1) << 2) >> 8));
+    lz.push_back(0x11);                 // end of stream
+    lz.push_back(0);
+    lz.push_back(0);
+    if (cut) lz.resize(lz.size() - 5);
+    std::vector<uint8_t> f = {'G', 'B', 'X', 6, 0, 'B', 'U', 'C', 'R'};
+    auto u32 = [&](uint32_t v) {
+        for (int i = 0; i < 4; i++) f.push_back(static_cast<uint8_t>(v >> (8 * i)));
+    };
+    u32(0x0308C000);  // class
+    u32(3);           // user data
+    f.push_back('a'); f.push_back('b'); f.push_back('c');
+    u32(2);           // numNodes
+    u32(external ? 1 : 0);
+    u32(static_cast<uint32_t>(lit.size() + 13));
+    u32(static_cast<uint32_t>(lz.size()));
+    f.insert(f.end(), lz.begin(), lz.end());
+    return f;
+}
+
+static void compressedProfiles() {
+    using namespace autosave::profilepath;
+    const std::string guid = "fe7b39e0-cfa8-11f1-8001-444553540000";
+    std::vector<uint8_t> f = syntheticProfile(false, false), body;
+    const char* why = "";
+    check(!containsText(f.data(), f.size(), guid), "compressed profile: the GUID is cut in the file itself");
+    check(gbxBody(f.data(), f.size(), body, &why) == 1 && containsText(body.data(), body.size(), guid),
+          "compressed profile: the decompressed body names the pad");
+    const std::vector<uint8_t> ext = syntheticProfile(true, false), cut = syntheticProfile(false, true);
+    check(gbxBody(ext.data(), ext.size(), body, &why) == -1 && body.empty(), "compressed profile: external refs refused");
+    check(gbxBody(cut.data(), cut.size(), body, &why) == -1 && body.empty(), "compressed profile: a cut LZO stream refused");
+    check(gbxBody(f.data(), 20, body, &why) == -1, "compressed profile: truncated header refused");
+    const uint8_t plain[] = {'G', 'B', 'X', 6, 0, 'B', 'U', 'U', 'R'};
+    check(gbxBody(plain, sizeof(plain), body, &why) == 0, "uncompressed body: search the file itself");
+}
+
 int main() {
     hotkeys();
     ini();
     values();
     plans();
     profilePaths();
+    compressedProfiles();
     printf("essentials_test: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

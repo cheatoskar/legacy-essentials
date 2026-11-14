@@ -30,14 +30,14 @@ rem ... and its game settings (volumes, window mode)
 %CXX% /Fo"build\horizon\\" vendor\horizon\game-settings\gs_game.cpp vendor\horizon\game-settings\gs_master.cpp || exit /b 1
 
 rem the mod
-%CXX% /Ivendor\horizon\imgui /Fo"build\mod\\" src\main.cpp src\autosave.cpp src\legacy.cpp src\hook.cpp src\header.cpp src\log.cpp src\sha256.cpp src\tmxcopy.cpp src\settings.cpp src\coexist.cpp src\controller.cpp src\gamesettings.cpp src\essentials.cpp src\overlay.cpp src\profilediag.cpp || exit /b 1
+%CXX% /Ivendor\horizon\imgui /Fo"build\mod\\" src\main.cpp src\autosave.cpp src\legacy.cpp src\hook.cpp src\header.cpp src\log.cpp src\sha256.cpp src\tmxcopy.cpp src\lzo.cpp src\settings.cpp src\coexist.cpp src\controller.cpp src\gamesettings.cpp src\essentials.cpp src\overlay.cpp src\profilediag.cpp || exit /b 1
 link /nologo /DLL /OPT:REF /OPT:ICF /MACHINE:X86 /SAFESEH /DYNAMICBASE /NXCOMPAT /DEF:src\eswc_autosave.def /OUT:dist\eswc_autosave.dll /IMPLIB:build\eswc_autosave.lib build\mod\*.obj build\horizon\*.obj build\imgui.lib user32.lib kernel32.lib gdi32.lib shell32.lib ole32.lib bcrypt.lib wininet.lib dxguid.lib setupapi.lib advapi32.lib || exit /b 1
 copy /y eswc_autosave.ini dist\eswc_autosave.ini >nul
 
 rem tests
 set "TCXX=cl /nologo /O2 /MT /W4 /EHsc /std:c++17 /utf-8 %DEFS%"
 %TCXX% /Isrc\shim /Fo"build\test\\" /Fe"build\test\onlinetest.exe" test\onlinetest.cpp vendor\horizon\host\onlinefix.cpp src\log.cpp wininet.lib >nul || exit /b 1
-%TCXX% /WX /Fo"build\test\\" /Fe"build\test\tmxcopy_test.exe" test\tmxcopy_test.cpp src\tmxcopy.cpp || exit /b 1
+%TCXX% /WX /Fo"build\test\\" /Fe"build\test\tmxcopy_test.exe" test\tmxcopy_test.cpp src\tmxcopy.cpp src\lzo.cpp || exit /b 1
 rem Sunrise/Original autosave against a fake game image
 %TCXX% /WX /Fo"build\test\\" /Fe"build\test\legacy_test.exe" test\legacy_test.cpp src\legacy.cpp src\hook.cpp src\header.cpp src\log.cpp src\sha256.cpp user32.lib bcrypt.lib || exit /b 1
 rem the Horizon Client's controller-fix unit tests, on the vendored code
@@ -47,12 +47,12 @@ rem the Horizon Client's game-settings unit tests, on the vendored code
 %TCXX% /WX /Fo"build\test\\" /Fe"build\test\gs_tests.exe" vendor\horizon\game-settings\tests\gs_tests.cpp build\horizon\gs_*.obj user32.lib ole32.lib || exit /b 1
 %TCXX% /WX /Fo"build\test\\" /Fe"build\test\realexe_test.exe" test\realexe_test.cpp build\horizon\hp_*.obj build\horizon\gs_*.obj user32.lib ole32.lib dxguid.lib setupapi.lib /link /BASE:0x30000000 || exit /b 1
 rem profile diagnostics on a profile folder next to the test exe
-%TCXX% /WX /Fo"build\test\\" /Fe"build\test\profilediag_test.exe" test\profilediag_test.cpp src\profilediag.cpp src\log.cpp advapi32.lib || exit /b 1
+%TCXX% /WX /Fo"build\test\\" /Fe"build\test\profilediag_test.exe" test\profilediag_test.cpp src\profilediag.cpp src\log.cpp src\lzo.cpp advapi32.lib || exit /b 1
 rem settings, menu key, Horizon Client coexistence plan
-%TCXX% /WX /Fo"build\test\\" /Fe"build\test\essentials_test.exe" test\essentials_test.cpp src\settings.cpp src\coexist.cpp || exit /b 1
+%TCXX% /WX /Fo"build\test\\" /Fe"build\test\essentials_test.exe" test\essentials_test.cpp src\settings.cpp src\coexist.cpp src\lzo.cpp || exit /b 1
 rem the real menu drawn by the real overlay on a Direct3D 9 device of a test window (writes menu_test.bmp)
 %CXX% /Ivendor\horizon\imgui /Fo"build\menu_test\\" test\menu_test.cpp || exit /b 1
-link /nologo /MACHINE:X86 /OUT:build\test\menu_test.exe build\menu_test\menu_test.obj build\mod\essentials.obj build\mod\overlay.obj build\mod\settings.obj build\mod\coexist.obj build\mod\controller.obj build\mod\gamesettings.obj build\mod\log.obj build\mod\profilediag.obj build\horizon\*.obj build\imgui.lib user32.lib kernel32.lib gdi32.lib shell32.lib ole32.lib wininet.lib dxguid.lib setupapi.lib d3d9.lib dinput8.lib advapi32.lib || exit /b 1
+link /nologo /MACHINE:X86 /OUT:build\test\menu_test.exe build\menu_test\menu_test.obj build\mod\essentials.obj build\mod\overlay.obj build\mod\settings.obj build\mod\coexist.obj build\mod\controller.obj build\mod\gamesettings.obj build\mod\log.obj build\mod\profilediag.obj build\mod\lzo.obj build\horizon\*.obj build\imgui.lib user32.lib kernel32.lib gdi32.lib shell32.lib ole32.lib wininet.lib dxguid.lib setupapi.lib d3d9.lib dinput8.lib advapi32.lib || exit /b 1
 echo built dist\dinput8.dll, dist\eswc_autosave.dll and the tests in build\test
 exit /b 0
 :novc

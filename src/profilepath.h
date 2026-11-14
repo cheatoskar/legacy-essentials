@@ -5,6 +5,9 @@
 #include <wchar.h>
 
 #include <string>
+#include <vector>
+
+#include "lzo.h"
 
 namespace autosave {
 namespace profilepath {
@@ -42,6 +45,52 @@ inline int gbxBodyCompressed(const uint8_t* d, size_t n) {
     const unsigned version = d[3] | (d[4] << 8);
     if (version < 3 || d[5] != 'B') return -1;
     return d[7] == 'C' ? 1 : d[7] == 'U' ? 0 : -1;
+}
+
+constexpr uint32_t kMaxBody = 4u << 20; // a profile body is a few hundred KB at most
+
+// The decompressed body of a GBX v6 file with a compressed body ("GBX" u16 6 "BUCR", then u32 class, u32 userDataSize
+// + user data, u32 numNodes, u32 numExternal (0), u32 bodySize, u32 compressedSize, LZO1X data). 1: out holds the
+// body; 0: the body is not compressed (search the file itself); -1: not readable, *why says why.
+inline int gbxBody(const uint8_t* d, size_t n, std::vector<uint8_t>& out, const char** why) {
+    out.clear();
+    const int c = gbxBodyCompressed(d, n);
+    if (c == 0) return 0;
+    *why = "not a GBX header this knows";
+    if (c < 0) return -1;
+    const unsigned version = d[3] | (d[4] << 8);
+    if (version != 6) {
+        *why = "GBX version is not 6";
+        return -1;
+    }
+    size_t p = 9;
+    auto u32 = [&](uint32_t* v) {
+        if (n < 4 || p > n - 4) return false;
+        *v = static_cast<uint32_t>(d[p]) | (static_cast<uint32_t>(d[p + 1]) << 8) | (static_cast<uint32_t>(d[p + 2]) << 16) |
+             (static_cast<uint32_t>(d[p + 3]) << 24);
+        p += 4;
+        return true;
+    };
+    uint32_t cls = 0, user = 0, nodes = 0, ext = 0, size = 0, comp = 0;
+    *why = "truncated header";
+    if (!u32(&cls) || !u32(&user) || user > n - p) return -1;
+    p += user;
+    if (!u32(&nodes) || !u32(&ext)) return -1;
+    if (ext) {
+        *why = "external references, body not read";
+        return -1;
+    }
+    if (!u32(&size) || !u32(&comp)) return -1;
+    if (size == 0 || size > kMaxBody || comp > n - p) {
+        *why = "body size out of range";
+        return -1;
+    }
+    out.resize(size);
+    if (!lzo::decompress(d + p, comp, out.data(), size, why)) {
+        out.clear();
+        return -1;
+    }
+    return 1;
 }
 
 // the GUID text ("fe7b39e0-cfa8-11f1-8001-444553540000") appears in the bytes, any case

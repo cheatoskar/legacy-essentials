@@ -17,7 +17,7 @@ namespace {
 
 constexpr DWORD kPollMs = 5000;
 constexpr ULONGLONG kSettleMs = 2000;  // a profile is read for the GUID check once it was not written for this long
-constexpr DWORD kMaxRead = 8u << 20;   // profiles are a few KB to a few hundred KB
+constexpr DWORD kMaxRead = 8u << 20;   // profiles are a few KB to a few hundred KB (body capped in profilepath.h)
 
 struct FileState {
     bool store; // in the VirtualStore copy of the folder
@@ -145,11 +145,16 @@ std::string padCheck(const FileState& f, const std::vector<std::string>& guids) 
     }
     CloseHandle(h);
     if (d.empty()) return "empty or too large, not checked";
-    if (profilepath::gbxBodyCompressed(d.data(), d.size()) == 1) return "body compressed, pads not checked";
+    // the GUIDs are in the body; Sunrise compresses it (an LZO back-reference can cut the GUID in the file itself)
+    std::vector<uint8_t> body;
+    const char* why = "";
+    const int b = profilepath::gbxBody(d.data(), d.size(), body, &why);
+    if (b < 0) return std::string("body not readable (") + why + "), pads not checked";
+    const std::vector<uint8_t>& text = b == 1 ? body : d;
     std::string r;
     for (const auto& g : guids) {
         if (!r.empty()) r += ", ";
-        r += "pad " + g.substr(0, 8) + (profilepath::containsText(d.data(), d.size(), g) ? " named" : " NOT named");
+        r += "pad " + g.substr(0, 8) + (profilepath::containsText(text.data(), text.size(), g) ? " named" : " NOT named");
     }
     return r.empty() ? "no pads to check" : r;
 }
