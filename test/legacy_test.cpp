@@ -152,7 +152,7 @@ wchar_t kEmpty[1] = {0};
 std::wstring g_dir; // the fake "My Replays" folder (trailing backslash)
 
 // objects
-alignas(16) unsigned char app[0x400], race[0x100], player[0x80], info[0x300], otherInfo[0x300], replay[0x200], challenge[0x200];
+alignas(16) unsigned char app[0x400], race[0x500], player[0x80], info[0x300], otherInfo[0x300], replay[0x200], challenge[0x200];
 alignas(16) unsigned char engineMain[0x40], engineSub[0x40], systemEngine[0x40], folder[0x20];
 void* folderVt[64];
 wchar_t mapName[64] = L"$o$f00Test Map";
@@ -161,6 +161,8 @@ wchar_t mapName[64] = L"$o$f00Test Map";
 unsigned g_runTime = 0;
 int g_stuntScore = 0;
 bool g_clearRecording = true;
+bool g_crazyTake = true;       // the Crazy race end takes the run as a new crazy ghost
+bool g_crazyStopsRecording = true;
 int g_archSaves = 0, g_ctor = 0, g_dtor = 0, g_scan = 0, g_unbind = 0, g_live = 0;
 void* g_unbindNod = nullptr;
 int g_saveArgs[4] = {};
@@ -251,6 +253,14 @@ void __fastcall gameSoloEnd(void* r, void*) {
     (void)r;
 }
 
+// the game's Crazy race end: a run faster than the slowest crazy ghost stops the recording and adds the ghost
+void __fastcall gameCrazyEnd(void* r, void*) {
+    if (g_crazyTake) {
+        if (g_crazyStopsRecording) *reinterpret_cast<int*>(replay + legacy_off::kReplayRecording) = 0;
+        (*reinterpret_cast<unsigned*>(static_cast<unsigned char*>(r) + crazySite(g_game->game)->newGhostCount))++;
+    }
+}
+
 void jmpTo(uintptr_t from, const void* to) {
     unsigned char* p = reinterpret_cast<unsigned char*>(from);
     p[0] = 0xE9;
@@ -286,6 +296,10 @@ void build(const LegacyGame& g) {
     unsigned char popE[] = {0x5f, 0x5e, 0x5d, 0x5b, 0x83, 0xc4, 0x08}; // pop edi/esi/ebp/ebx, add esp 8
     memcpy(e + 7, popE, sizeof(popE));
     jmpTo(reinterpret_cast<uintptr_t>(e + 14), reinterpret_cast<void*>(&gameSoloEnd));
+    unsigned char* c = reinterpret_cast<unsigned char*>(at(crazySite(g.game)->crazyEnd));
+    memcpy(c, kCrazyEndPrologue, sizeof(kCrazyEndPrologue));
+    memcpy(c + 7, popE, sizeof(popE));
+    jmpTo(reinterpret_cast<uintptr_t>(c + 14), reinterpret_cast<void*>(&gameCrazyEnd));
     // globals
     static wchar_t* emptyPtr = kEmpty;
     *reinterpret_cast<wchar_t**>(at(g.emptyWideString)) = emptyPtr;
@@ -324,6 +338,18 @@ void run(unsigned time, bool finish = true, bool raceEnd = true, void* who = pla
     g_runTime = time;
     if (finish) reinterpret_cast<FnFinish>(at(g_game->onFinishLine))(race, nullptr, who);
     if (raceEnd) reinterpret_cast<FnEnd>(at(g_game->soloRaceEnd))(race, nullptr);
+}
+
+// One Crazy-mode run: start, finish, then the Crazy race end (which takes the run or not).
+void crazyRun(unsigned time, bool take, bool finish = true, bool stopsRecording = true) {
+    *reinterpret_cast<int*>(info + legacy_off::kInfoRaceState) = 1;
+    *reinterpret_cast<int*>(replay + legacy_off::kReplayRecording) = 1;
+    g_runTime = time;
+    g_crazyTake = take;
+    g_crazyStopsRecording = stopsRecording;
+    if (finish) reinterpret_cast<FnFinish>(at(g_game->onFinishLine))(race, nullptr, player);
+    reinterpret_cast<FnEnd>(at(crazySite(g_game->game)->crazyEnd))(race, nullptr);
+    g_crazyTake = g_crazyStopsRecording = true;
 }
 
 std::string readFile(const std::wstring& p) {
@@ -446,6 +472,29 @@ void testFakeGame(Game which, const std::wstring& root) {
     legacy::start(g, base, noScan, 0);
     fake::run(52000);
     check(fake::g_archSaves == 1 && fake::g_scan == 0, "ScanReplays=0: saved, replay list not rescanned");
+
+    // 11. Crazy mode (own race end), Mode=best: only runs the game takes as a new crazy ghost are saved
+    fake::build(g);
+    clearDir(fake::g_dir);
+    check(legacy::start(g, base, cfg, 0) && *reinterpret_cast<unsigned char*>(fake::at(crazySite(g.game)->crazyEnd)) == 0xE9,
+          "Crazy: race end hooked (prologue matches)");
+    const unsigned skippedBefore = legacy::stats().skipped;
+    fake::crazyRun(40000, true);
+    check(fake::g_archSaves == 1 && fileThere(fake::g_dir + L"$o$f00Test Map(00'40''00).Replay.Gbx") && fake::g_saveNod == fake::replay &&
+              fake::g_saveArgs[0] == 10 && fake::g_saveArgs[1] == 7 && fake::g_saveArgs[2] == 1 && fake::g_saveArgs[3] == 1,
+          "Crazy: run taken as a crazy ghost (recording stopped): saved like a solo run");
+    fake::crazyRun(41000, true);
+    check(fake::g_archSaves == 2, "Crazy: slower run taken as a ghost: saved too (Mode=best does not apply in Crazy)");
+    fake::crazyRun(39000, false);
+    check(fake::g_archSaves == 2 && legacy::stats().skipped == skippedBefore,
+          "Crazy: run not taken (recording still running): not saved, nothing written");
+    fake::crazyRun(38000, true, true, false);
+    check(fake::g_archSaves == 2, "Crazy: ghost added but the recording still running: not saved");
+    fake::crazyRun(37000, true, false);
+    check(fake::g_archSaves == 2, "Crazy: race end without a finish: nothing saved");
+    fake::run(36000);
+    check(fake::g_archSaves == 3, "Crazy hook installed: the solo race end still saves solo runs");
+    check(fake::g_live == 0, "Crazy: no game string left allocated");
 }
 
 } // namespace

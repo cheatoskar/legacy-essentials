@@ -21,6 +21,7 @@
 #include "../vendor/horizon/controller-hotplug/hp_game.h"
 #include "../vendor/horizon/game-settings/gs_game.h"
 #include "../vendor/horizon/host/keepbindings_sites.h"
+#include "../src/games.h"
 #include "../src/log.h"
 #include "../src/shim/host/host.h"
 
@@ -155,6 +156,40 @@ static bool runOne(const wchar_t* path, const char* game) {
         check(!horizon::keepBindingsInstall(imgBase, orig) &&
                   horizon::keepbind::check(s, img + (s.call - 10 - 0x400000)) == horizon::keepbind::State::Original,
               "keep bindings: profiles already loaded -> too late, nothing changed");
+    }
+    {
+        // Crazy mode autosave (games.h CrazySite): the two race classes' vtables, the race end slot, the shared
+        // finish slot before it, both prologues and the new-ghost counter the Crazy race end raises.
+        const autosave::Game gm = strcmp(game, "eswc") == 0       ? autosave::Game::Eswc
+                                  : strcmp(game, "original") == 0 ? autosave::Game::Original
+                                                                  : autosave::Game::Sunrise;
+        const autosave::CrazySite* c = autosave::crazySite(gm);
+        auto u32 = [&](uintptr_t link) { return *reinterpret_cast<const uint32_t*>(img + (link - 0x400000)); };
+        auto bytes = [&](uintptr_t link) { return img + (link - 0x400000); };
+        check(u32(c->vtSolo + 4 * c->endSlot) == c->soloEnd, "crazy: CTrackManiaRace1P vtable race-end slot = the solo race end");
+        check(u32(c->vtCrazy + 4 * c->endSlot) == c->crazyEnd, "crazy: CTrackManiaRace1PCrazy overrides that slot with its own race end");
+        check(u32(c->vtSolo + 4 * (c->endSlot - 1)) == c->finishCaller && u32(c->vtCrazy + 4 * (c->endSlot - 1)) == c->finishCaller,
+              "crazy: the slot before it is the same function in both classes");
+        const uint8_t* fc = bytes(c->finishCaller + 9);
+        check(fc[0] == 0xE8 && c->finishCaller + 9 + 5 + *reinterpret_cast<const int32_t*>(fc + 1) == c->onFinishLine,
+              "crazy: that function calls OnFinishLine (our finish hook sees Crazy finishes)");
+        check(memcmp(bytes(c->crazyEnd), autosave::kCrazyEndPrologue, sizeof(autosave::kCrazyEndPrologue)) == 0 &&
+                  memcmp(bytes(c->soloEnd), autosave::kCrazyEndPrologue, sizeof(autosave::kCrazyEndPrologue)) == 0,
+              "crazy: Crazy race end prologue 83 ec 08 53 55 56 57 (as the solo race end)");
+        // mov edi, [esi+newGhostCount] right after the call that adds the new ghost
+        bool counter = false;
+        const uint8_t* ce = bytes(c->crazyEnd);
+        for (int i = 0; i < 0x160 && !counter; i++)
+            counter = ce[i] == 0x8B && ce[i + 1] == 0xBE && *reinterpret_cast<const uint32_t*>(ce + i + 2) == c->newGhostCount &&
+                      ce[i - 5] == 0xE8;
+        check(counter, "crazy: the race end reads the new-ghost counter after adding the ghost");
+        // the base the Crazy race end reads the replay from: app+0x130 (Sunrise/Original), app+0x144 (ESWC)
+        const uint32_t appReplay = gm == autosave::Game::Eswc ? 0x144 : static_cast<uint32_t>(autosave::legacy_off::kAppReplay);
+        bool replay = false;
+        for (int i = 0; i < 0x160 && !replay; i++) replay = ce[i] == 0x8B && ce[i + 1] == 0xBA && *reinterpret_cast<const uint32_t*>(ce + i + 2) == appReplay;
+        check(replay, "crazy: the race end takes the run's replay from the app member the autosave saves");
+        if (const autosave::LegacyGame* lg = autosave::legacyGame(gm))
+            check(lg->soloRaceEnd == c->soloEnd && lg->onFinishLine == c->onFinishLine, "crazy: same solo race end and OnFinishLine as the legacy table");
     }
     const bool d3d = iatRva(img, "d3d9.dll", "Direct3DCreate9") != 0;
     const bool gpa = iatRva(img, "KERNEL32.dll", "GetProcAddress") != 0;

@@ -123,11 +123,14 @@ Every change is written to `eswc_autosave.ini` at once. A short note in the top 
 | Mode | What gets saved |
 |---|---|
 | Solo (campaign, single tracks), all three games | the race you just finished, like "Save replay" on the end screen |
+| Crazy mode, all three games | each run the game takes as a new crazy ghost (faster than your slowest crazy ghost), in both `Mode` settings |
 | LAN / online server, ESWC only | your previous run, like Esc → "Save previous replay" |
 
 Replays go to `GameData\Tracks\Replays\My Replays\` as `<Track>(mm'ss''cc).Replay.Gbx` (stunts: `<Track>(score).Replay.Gbx`), the name the game itself suggests. Existing files are never overwritten (you get `… (2).Replay.Gbx` instead). Every save is logged with `[Solo]` or `[LAN]` plus a header check (`validable=1`).
 
-Sunrise and Original: solo only: campaign and single tracks (the race classes `1P`, `1PGhosts`, `1PSpecial`). LAN and online races are never saved there, and neither are hot-seat and Crazy mode. With `Mode=best` (the default) a replay is saved only when the run is a new personal best on the map since the game started. The mod calls the game's own save code, the same calls "Save replay" makes after you press OK, so the replay and its `validable` flag are exactly what the game would write.
+Sunrise and Original: solo only: campaign and single tracks (the race classes `1P`, `1PGhosts`, `1PSpecial`). LAN and online races are never saved there, and neither is hot-seat. With `Mode=best` (the default) a replay is saved only when the run is a new personal best on the map since the game started. The mod calls the game's own save code, the same calls "Save replay" makes after you press OK, so the replay and its `validable` flag are exactly what the game would write.
+
+Crazy mode (all three games): the game ends a run with its own code there. Only a run that is faster than your slowest crazy ghost becomes a new ghost; for that run the game finishes the replay, and that replay is saved, with the same name, folder and rules as a solo run. Other runs are not saved: the game does not finish their replay (it keeps recording over it), so "every finish" (`Mode=all`) cannot apply there, and `Mode=best` does not either. The crazy ghost collection itself ("Save" in the game's Crazy dialog) is not saved by the mod.
 
 ### TMX copy (servers with other players, ESWC)
 
