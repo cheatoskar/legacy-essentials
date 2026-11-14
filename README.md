@@ -6,7 +6,8 @@
 
 - **Autosave**: every finish is saved as a normal `.Replay.Gbx`, the same file you get from "Save replay" / "Save previous replay", just without clicking. The old games only keep a ghost of your best run in `Autosaves` (not validable); this saves the full replay. Made for [100% TMX](https://tm-exchange.com) runs together with [nostalgic-completionist](https://github.com/BigBang1112/nostalgic-completionist), but it works on its own too.
 - **Controller fix**: a controller plugged in or switched on while the game runs works at once, with the game's own bindings for it. Without it the game only sees controllers that were there at start.
-- **Login fix** (ESWC, Original): the online login works again on Windows 10/11 (error 12157).
+- **Login fix** (ESWC, Original, Sunrise): the online login works again on Windows 10/11 (error 12157; Sunrise also error 12031).
+- **Keep bindings** (Sunrise, Original): your key and pad bindings stay after a restart (the games reset them at every start).
 - **Volume, Music, Window mode**: change them in the game, like in the launcher's settings. Each changes at once.
 - **Menu**: `Ctrl+F2` in the game switches each of these on or off.
 
@@ -61,7 +62,7 @@ With any other exe the mod does nothing (DirectInput is still passed through), a
 | Autosave, LAN and online (your previous run) | ✓ | – | – |
 | TMX copy of LAN/online replays | ✓ | – | – |
 | Controller fix | experimental | experimental | experimental |
-| Login fix (error 12157) | ✓ | – (not known to be needed) | experimental |
+| Login fix (error 12157) | ✓ | experimental (with the master name redirect, error 12031; not tested in the game yet) | experimental |
 | Volume, Music, Window mode | experimental | experimental | experimental |
 | Menu (`Ctrl+F2`) | experimental | experimental | experimental |
 
@@ -107,7 +108,7 @@ To remove it, delete `dinput8.dll` and `eswc_autosave.dll` (and the ini/log), an
 | Best times only | save only new personal bests (`Mode=best`) |
 | Open folder | opens the folder of the last saved replay (`My Replays` before the first save) |
 | Controller fix | on/off; status `On`, the number of pads it added, or `Unsupported` (the game code is not the one it knows) |
-| Login fix | ESWC and Original; a change takes effect at the next start (`Restart game`) |
+| Login fix | ESWC, Original and Sunrise; a change takes effect at the next start (`Restart game`) |
 | Volume | the game's volume in Windows (the same slider as the game in the Windows volume mixer) |
 | Music | the game's own music volume, heard at once |
 | Window mode | `Windowed` or `Fullscreen`, switched at once |
@@ -154,13 +155,15 @@ Before it does anything it checks the game's input code byte for byte (6 code si
 
 This is the Horizon Client's controller fix (module "Controller fix" 1.2.1), the same code.
 
-### Login fix (ESWC, Original)
+### Login fix (ESWC, Original, Sunrise)
 
 Clicking "Internet" in ESWC on Windows 10/11 fails with error **12157**. The login server is still up, but it only speaks TLS 1.0 and its certificate expired in 2020, and Windows no longer allows TLS 1.0 by default. With `OnlineFix=1` the DLL allows TLS 1.0 and skips the revocation check **for the game process only**. Nothing system-wide changes, and requests and servers stay the same.
 
 The connection is weak by today's standards, so use a password for your ESWC account that you don't use anywhere else.
 
-TrackMania Original (Online Patch v2): the patch's readme asks you to allow TLS 1.0 and to turn off the revocation check in the Windows Internet Options, for the whole system. With `OnlineFix=1` the mod does the same two things for the game process only, at the exe's own `HttpOpenRequestA` import. Sunrise: no login fix (not known to need one, nothing changed).
+TrackMania Original (Online Patch v2): the patch's readme asks you to allow TLS 1.0 and to turn off the revocation check in the Windows Internet Options, for the whole system. With `OnlineFix=1` the mod does the same two things for the game process only, at the exe's own `HttpOpenRequestA` import.
+
+TrackMania Sunrise (Win10 community repack): the game's master names no longer lead to the server. game.trackmaniasunrise.com does not resolve and www.trackmaniasunrise.com points to a parking server, so the login fails with error **12031**. Nadeo's old master server (91.121.54.245, the same machine as the ESWC master) still serves Sunrise and picks the site by the name in the request's Host header. With `OnlineFix=1`, inside the game process only, a connection to one of these two names goes to 91.121.54.245 instead, and each request on it keeps the name in its Host header; TLS 1.0 and the revocation check are handled as on ESWC (error 12157). The address is fixed in the code. A hosts-file entry for the two names keeps working as well. Not tested in the game yet.
 
 This is the Horizon Client's login fix, the same code.
 
@@ -203,7 +206,8 @@ The client's `Horizon-Install.cmd` does this for you: it keeps a `dinput8.dll` i
 | | `TestKey` | `0x78` (F9) | save right now, `0` = off |
 | | `ScanReplays` | `1` | refresh the in-game replay list after saving |
 | | `TmxCopy` | `1` | write the TMX copy after LAN/online saves (ESWC only) |
-| `[online]` | `OnlineFix` | `1` | login fix on/off (ESWC and Original; next start) (menu) |
+| `[online]` | `OnlineFix` | `1` | login fix on/off (ESWC, Original and Sunrise; next start) (menu) |
+| `[controller]` | `KeepBindings` | `1` | keep the saved bindings (Sunrise and Original reset them at every start; next start) |
 | `[controller]` | `ControllerFix` | `1` | controller fix on/off (menu) |
 | `[menu]` | `MenuKey` | `Ctrl+F2` | menu key, `0` = no menu |
 | `[sound]` | `Music` | empty | music volume `0`-`100`, empty = the game's own (menu) |
@@ -216,7 +220,7 @@ Version 1.3.1. Autosave on ESWC: tested on Windows 11 (solo, LAN with nostalgic-
 
 ## Known issues
 
-- **Sunrise and Original:** the autosave, controller fix, login fix (Original), volume and window mode are checked against the exes on disk and a fake game, not yet in a real race. Tell me what happens, with `eswc_autosave.log`.
+- **Sunrise and Original:** the autosave, controller fix, login fix, volume and window mode are checked against the exes on disk and a fake game, not yet in a real race. Tell me what happens, with `eswc_autosave.log`.
 - **The menu** is tested on a Direct3D 9 test window, not yet in the games.
 - **Network TimeAttack replays** (ESWC, LAN and online) cannot be re-validated by the game, neither the original nor the TMX copy (see [TMX copy](#tmx-copy-servers-with-other-players-eswc)).
 - **The login fix** uses TLS 1.0 and a certificate that expired in 2020: use a password for your ESWC account that you do not use anywhere else.
@@ -257,7 +261,7 @@ powershell -ExecutionPolicy Bypass -File tools/sync-horizon.ps1 -SettingsCommit 
 | `realexe_test` | the vendored controller fix's and game settings' code checks and the login fix's import slots against the real exes (read only) |
 | `tmxcopy_test <outdir> [--login L] [--time ms] [--ref DIR] <replays…>` | the TMX-copy conversion on replay files |
 | `profilediag_test` | the profile diagnostics on a profile folder next to the test exe: start lines, a save seen, the pad check, the exit line (about 17 s) |
-| `onlinetest` | the login fix inside a test exe, one real HTTPS request to the ESWC server (by hand) |
+| `onlinetest [0\|1\|sunrise]` | the login fix inside a test exe, one real HTTPS request to the ESWC server; `sunrise`: to game.trackmaniasunrise.com through the master name redirect (by hand) |
 | `test\run_harness.cmd` | the loader in a test program: with and without the mod, with a `dinput8.chain.dll`, and as `dinput8.chain.dll` itself |
 
 ## Changes

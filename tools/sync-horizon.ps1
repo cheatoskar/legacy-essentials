@@ -23,6 +23,7 @@ $stamp = Join-Path $dest "source.h"
 $groups = [ordered]@{
     "SOURCE" = [ordered]@{
         "src/host/onlinefix.cpp"                              = "host/onlinefix.cpp"
+        "src/host/onlinefix_names.h"                          = "host/onlinefix_names.h"
         "src/host/keepbindings.cpp"                           = "host/keepbindings.cpp"
         "src/host/keepbindings_sites.h"                       = "host/keepbindings_sites.h"
         "plugins/controller-hotplug/hp_bind.cpp"              = "controller-hotplug/hp_bind.cpp"

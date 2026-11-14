@@ -32,9 +32,13 @@ namespace autosave {
 namespace essentials {
 namespace {
 
-// HttpOpenRequestA import slots (PE import table): ESWC 0x00aca340, Original 0x00a162d4
+// HttpOpenRequestA import slots (PE import table): ESWC 0x00aca340, Original 0x00a162d4, Sunrise 0x00a1a2dc
 constexpr uintptr_t kEswcIatHttpOpenRequestA = 0x00aca340;
 constexpr uintptr_t kOriginalIatHttpOpenRequestA = 0x00a162d4;
+constexpr uintptr_t kSunriseIatHttpOpenRequestA = 0x00a1a2dc;
+// Sunrise only, for its master names (vendor/horizon/host/onlinefix.cpp): InternetConnectA, InternetCloseHandle
+constexpr uintptr_t kSunriseIatInternetConnectA = 0x00a1a2d8;
+constexpr uintptr_t kSunriseIatInternetCloseHandle = 0x00a1a2d4;
 constexpr WPARAM kMarker = 0x4C455353; // 'LESS': a controller step for the game thread
 
 const ExeId* g_exe = nullptr;
@@ -54,8 +58,16 @@ volatile LONG g_queued = 0;
 wchar_t g_lastFolder[MAX_PATH] = L"";
 unsigned g_saved = 0;
 
-bool gameHasLoginFix() { return g_exe && (g_exe->game == Game::Eswc || g_exe->game == Game::Original); }
-uintptr_t loginSlot() { return g_exe->game == Game::Eswc ? kEswcIatHttpOpenRequestA : kOriginalIatHttpOpenRequestA; }
+bool gameHasLoginFix() {
+    return g_exe && (g_exe->game == Game::Eswc || g_exe->game == Game::Original || g_exe->game == Game::Sunrise);
+}
+uintptr_t loginSlot() {
+    switch (g_exe->game) {
+    case Game::Eswc: return kEswcIatHttpOpenRequestA;
+    case Game::Sunrise: return kSunriseIatHttpOpenRequestA;
+    default: return kOriginalIatHttpOpenRequestA;
+    }
+}
 
 const char* gameShort() {
     if (!g_exe) return "";
@@ -78,7 +90,11 @@ bool loginHooked() {
 void installLoginFix() {
     if (g_loginInstalled) return;
     g_loginInstalled = true;
-    horizon::onlineFixInstall(g_base, loginSlot()); // logs "online: fix active" or why not
+    // logs "online: fix active" or why not; Sunrise also sends its master names to the master's IP address
+    if (g_exe->game == Game::Sunrise)
+        horizon::onlineFixInstall(g_base, loginSlot(), kSunriseIatInternetConnectA, kSunriseIatInternetCloseHandle);
+    else
+        horizon::onlineFixInstall(g_base, loginSlot());
     g_loginActive = loginHooked();
 }
 
@@ -280,7 +296,7 @@ void drawMenu(bool* open) {
     default: status("Off"); break;
     }
 
-    // Login fix (ESWC, Original)
+    // Login fix (ESWC, Original, Sunrise)
     if (gameHasLoginFix()) {
         ImGui::Separator();
         bool login = g_set.onlineFix;

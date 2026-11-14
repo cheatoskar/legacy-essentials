@@ -9,9 +9,10 @@
 #define HLOG(...) ::autosave::logLine(__VA_ARGS__)
 
 namespace horizon {
-// Login fix for ESWC and TM Original: TLS 1.0 for WinINet in this process and no revocation check on the
-// game's HTTPS requests (iatSlot: link address of the exe's HttpOpenRequestA import slot).
-void onlineFixInstall(uintptr_t exeBase, uintptr_t iatSlot);
+// Login fix for ESWC, TM Original and TM Sunrise: TLS 1.0 for WinINet in this process and no revocation check on
+// the game's HTTPS requests (iatSlot: link address of the exe's HttpOpenRequestA import slot). Sunrise also gives its
+// InternetConnectA and InternetCloseHandle slots: its master names then go to the master's IP address, Host kept.
+void onlineFixInstall(uintptr_t exeBase, uintptr_t iatSlot, uintptr_t iatConnect = 0, uintptr_t iatClose = 0);
 // Sunrise and Original: the game resets all bindings when it loads the profiles; this keeps the saved ones
 // (vendor/horizon/host/keepbindings.cpp). original: TM Original, else TM Sunrise.
 bool keepBindingsInstall(uintptr_t exeBase, bool original);

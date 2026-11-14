@@ -38,7 +38,7 @@ struct Plan {
 
 enum class Stage { Start, FirstMessage };
 
-// gameHasLoginFix: ESWC and Original. menuKey: a menu key is set.
+// gameHasLoginFix: ESWC, Original and Sunrise. menuKey: a menu key is set.
 Plan makePlan(const HorizonProbe& p, Stage stage, bool gameHasLoginFix, bool onlineFix, bool controllerFix, bool autosaveOn,
               bool menuKey);
 

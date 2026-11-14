@@ -1,7 +1,8 @@
 // Checks the vendored Horizon code against the real game exes on disk (read only, nothing is run):
 //   - the controller fix's game table: PE timestamp, every code signature and table entry (GameBackend::verify) and
 //     the late-pad bindings' signatures (Binder::verify)
-//   - the login fix's import slots: ESWC 0x00aca340 and Original 0x00a162d4 are the exe's HttpOpenRequestA slot
+//   - the login fix's import slots: ESWC 0x00aca340, Original 0x00a162d4 and Sunrise 0x00a1a2dc are the exe's
+//     HttpOpenRequestA slot; Sunrise 0x00a1a2d8 InternetConnectA and 0x00a1a2d4 InternetCloseHandle
 //   - the menu's way in: the exe imports Direct3DCreate9 or GetProcAddress
 //   - keep bindings: the bytes at the profile load's reset call (Sunrise, Original)
 //   - the game settings' table: PE timestamp, the code, pointer and reflection-member signatures of the volumes and
@@ -120,9 +121,17 @@ static bool runOne(const wchar_t* path, const char* game) {
                     g->toggle.ptrCount);
         check(settings.toggleOk(), what);
     }
-    if (strcmp(game, "eswc") == 0 || strcmp(game, "original") == 0) {
-        const DWORD want = strcmp(game, "eswc") == 0 ? 0x00aca340 - 0x400000 : 0x00a162d4 - 0x400000;
+    {
+        const DWORD want = strcmp(game, "eswc") == 0       ? 0x00aca340 - 0x400000
+                           : strcmp(game, "original") == 0 ? 0x00a162d4 - 0x400000
+                                                           : 0x00a1a2dc - 0x400000;
         check(iatRva(img, "WININET.dll", "HttpOpenRequestA") == want, "login fix: HttpOpenRequestA import slot as in essentials.cpp");
+    }
+    if (strcmp(game, "sunrise") == 0) {
+        check(iatRva(img, "WININET.dll", "InternetConnectA") == 0x00a1a2d8 - 0x400000,
+              "login fix: InternetConnectA import slot as in essentials.cpp (Sunrise master names)");
+        check(iatRva(img, "WININET.dll", "InternetCloseHandle") == 0x00a1a2d4 - 0x400000,
+              "login fix: InternetCloseHandle import slot as in essentials.cpp");
     }
     if (strcmp(game, "sunrise") == 0 || strcmp(game, "original") == 0) {
         const horizon::keepbind::Site& s = strcmp(game, "original") == 0 ? horizon::keepbind::original() : horizon::keepbind::sunrise();
@@ -135,10 +144,11 @@ static bool runOne(const wchar_t* path, const char* game) {
                   horizon::keepbind::check(s, img + (s.call - 10 - 0x400000)) == horizon::keepbind::State::Kept,
               "keep bindings: installed on the image, the call now goes to the defaults pass");
         check(horizon::keepBindingsInstall(imgBase, orig), "keep bindings: a second install sees it done and changes nothing");
-        const uint32_t app = static_cast<uint32_t>(imgBase + 0x100); // a fake app with 1 loaded profile
+        static uint8_t fakeApp[0x200]; // a fake app with 1 loaded profile (outside the image: nothing else is touched)
+        const uint32_t app = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(fakeApp));
         memcpy(img + (s.appGlobal - 0x400000), &app, 4);
         const uint32_t one = 1;
-        memcpy(img + 0x100 + s.appProfiles, &one, 4);
+        memcpy(fakeApp + s.appProfiles, &one, 4);
         uint8_t back[5];
         horizon::keepbind::callBytes(s.call, s.resetFn, back);
         memcpy(img + (s.call - 0x400000), back, 5);
