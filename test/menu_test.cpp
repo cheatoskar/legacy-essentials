@@ -10,7 +10,8 @@
 //     WindowMode=fullscreen follow
 //   - a saved replay shows the toast
 // Writes build\test\menu_test.bmp (menu open) and menu_toast.bmp (toast) next to this exe. Not the game: the
-// controller fix finds no table for this exe and says so; there is no login fix (Sunrise-like).
+// controller fix finds no table for this exe and says so; the login fix is switched off (OnlineFix=0: this exe has
+// none of Sunrise's WinINet import slots).
 #define DIRECTINPUT_VERSION 0x0800
 #include <windows.h>
 
@@ -199,9 +200,11 @@ int wmain() {
     DeleteFileW(ini);
     autosave::logOpen(); // eswc_autosave.log next to this exe
 
-    // a Sunrise-like exe id (no login fix), the defaults (menu key Ctrl+F2)
+    // a Sunrise-like exe id, the defaults (menu key Ctrl+F2) but no login fix: Sunrise's import slots are not in
+    // this exe (the menu still shows the row)
     static const autosave::ExeId kTestExe = {autosave::Game::Sunrise, "menu_test.exe", "", 0, 0};
     autosave::Settings set;
+    set.onlineFix = false;
     autosave::essentials::start(kTestExe, set, reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)), GetCurrentThreadId());
     check(autosave::overlay::installed(), "overlay installed (standalone, menu key set)");
     // the game settings once more, on a fake Sunrise game (this exe is not a game: its rows would say Unavailable)

@@ -7,6 +7,7 @@
 #include <wchar.h>
 
 #include "../src/coexist.h"
+#include "../vendor/horizon/host/onlinefix_names.h"
 #include "../src/settings.h"
 
 using namespace autosave;
@@ -154,7 +155,7 @@ static void plans() {
     Plan p = makePlan(none, Stage::Start, true, true, true, true, true);
     check(!p.horizon && p.loginFix && p.menu && p.controller && p.autosave, "standalone: everything ours");
     p = makePlan(none, Stage::Start, false, true, true, true, true);
-    check(!p.loginFix, "Sunrise: no login fix");
+    check(!p.loginFix, "a game without a login fix: none");
     p = makePlan(none, Stage::Start, true, false, false, false, false);
     check(!p.loginFix && !p.menu && !p.controller && !p.autosave, "standalone, all switched off");
     check(p.gameSettings, "standalone: game settings ours");
@@ -195,11 +196,27 @@ static void plans() {
     check(p.horizon && !p.loginFix && !p.menu, "client already loaded at our start");
 }
 
+// login fix on Sunrise (the client's vendored onlinefix_names.h): only the two master names, any case, whole name
+static void sunriseNames() {
+    using horizon::sunriseMasterName;
+    check(strcmp(horizon::kSunriseMasterIp, "91.121.54.245") == 0, "Sunrise master IP");
+    const char* g = sunriseMasterName("game.trackmaniasunrise.com");
+    const char* w = sunriseMasterName("WWW.TrackManiaSunrise.COM");
+    check(g && strcmp(g, "game.trackmaniasunrise.com") == 0, "game. name matches");
+    check(w && strcmp(w, "www.trackmaniasunrise.com") == 0, "www. name matches in any case, lower-case result");
+    check(!sunriseMasterName(nullptr) && !sunriseMasterName("") && !sunriseMasterName("trackmaniasunrise.com"), "empty or bare domain: no");
+    check(!sunriseMasterName("game.trackmaniasunrise.com.") && !sunriseMasterName("xgame.trackmaniasunrise.com") &&
+              !sunriseMasterName("game.trackmaniasunrise.co") && !sunriseMasterName("game.trackmaniasunrise.com:443"),
+          "only the whole name");
+    check(!sunriseMasterName("game.trackmanianations.com") && !sunriseMasterName("91.121.54.245"), "other names: no");
+}
+
 int main() {
     hotkeys();
     ini();
     values();
     plans();
+    sunriseNames();
     printf("essentials_test: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

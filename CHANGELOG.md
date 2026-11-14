@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Login fix on Sunrise** (`OnlineFix=1`, default): the game's master names no longer lead to the server (game.trackmaniasunrise.com does not resolve, www.trackmaniasunrise.com points to a parking server: error 12031). Inside the game process only, a connection to one of them goes to Nadeo's old master server 91.121.54.245 (it still serves Sunrise) and each request keeps the name in its Host header; TLS 1.0 and no revocation check as on ESWC (error 12157). A hosts-file entry keeps working. The Horizon Client's login fix, the same code (also its new `onlinefix_names.h`). Not tested in the game yet.
+
 ## 1.3.1
 
 - No Sounds slider: the games' own options have Volume and Music only, and the slider was not heard on ESWC. A `Sounds=` value in the ini is no longer put into the game. The Horizon Client's Game settings 1.1.1, the same code.

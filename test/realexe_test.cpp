@@ -1,7 +1,8 @@
 // Checks the vendored Horizon code against the real game exes on disk (read only, nothing is run):
 //   - the controller fix's game table: PE timestamp, every code signature and table entry (GameBackend::verify) and
 //     the late-pad bindings' signatures (Binder::verify)
-//   - the login fix's import slots: ESWC 0x00aca340 and Original 0x00a162d4 are the exe's HttpOpenRequestA slot
+//   - the login fix's import slots: ESWC 0x00aca340, Original 0x00a162d4 and Sunrise 0x00a1a2dc are the exe's
+//     HttpOpenRequestA slot; Sunrise 0x00a1a2d8 InternetConnectA and 0x00a1a2d4 InternetCloseHandle
 //   - the menu's way in: the exe imports Direct3DCreate9 or GetProcAddress
 //   - the game settings' table: PE timestamp, the code, pointer and reflection-member signatures of the volumes and
 //     of the window mode and of the game's own fullscreen switch (gs::Game::audioOk / displayOk / toggleOk)
@@ -116,9 +117,17 @@ static bool runOne(const wchar_t* path, const char* game) {
                     g->toggle.ptrCount);
         check(settings.toggleOk(), what);
     }
-    if (strcmp(game, "eswc") == 0 || strcmp(game, "original") == 0) {
-        const DWORD want = strcmp(game, "eswc") == 0 ? 0x00aca340 - 0x400000 : 0x00a162d4 - 0x400000;
+    {
+        const DWORD want = strcmp(game, "eswc") == 0       ? 0x00aca340 - 0x400000
+                           : strcmp(game, "original") == 0 ? 0x00a162d4 - 0x400000
+                                                           : 0x00a1a2dc - 0x400000;
         check(iatRva(img, "WININET.dll", "HttpOpenRequestA") == want, "login fix: HttpOpenRequestA import slot as in essentials.cpp");
+    }
+    if (strcmp(game, "sunrise") == 0) {
+        check(iatRva(img, "WININET.dll", "InternetConnectA") == 0x00a1a2d8 - 0x400000,
+              "login fix: InternetConnectA import slot as in essentials.cpp (Sunrise master names)");
+        check(iatRva(img, "WININET.dll", "InternetCloseHandle") == 0x00a1a2d4 - 0x400000,
+              "login fix: InternetCloseHandle import slot as in essentials.cpp");
     }
     const bool d3d = iatRva(img, "d3d9.dll", "Direct3DCreate9") != 0;
     const bool gpa = iatRva(img, "KERNEL32.dll", "GetProcAddress") != 0;
