@@ -7,6 +7,7 @@
 #include <wchar.h>
 
 #include "../src/coexist.h"
+#include "../vendor/horizon/host/keepbindings_sites.h"
 #include "../src/profilepath.h"
 #include "../src/settings.h"
 
@@ -272,11 +273,26 @@ static void compressedProfiles() {
     check(gbxBody(plain, sizeof(plain), body, &why) == 0, "uncompressed body: search the file itself");
 }
 
+// keep bindings: the vendored byte check (the client's unit tests have the full set)
+static void keepBindings() {
+    using namespace horizon::keepbind;
+    const uint8_t exe[15] = {0x8b, 0x44, 0x24, 0x10, 0x8b, 0x40, 0x68, 0x50, 0x8b, 0xce, 0xe8, 0xe6, 0x09, 0x00, 0x00};
+    check(check(sunrise(), exe) == State::Original && check(original(), exe) == State::Original, "keep bindings: the exes' call");
+    uint8_t kept[15], other[15];
+    memcpy(kept, exe, 10);
+    callBytes(sunrise().call, sunrise().defaultsFn, kept + 10);
+    check(check(sunrise(), kept) == State::Kept && kept[11] == 0x16 && kept[12] == 0x0a, "keep bindings: redirected call");
+    memcpy(other, exe, 15);
+    other[12] = 0x0b;
+    check(check(original(), other) == State::Other, "keep bindings: other code refused");
+}
+
 int main() {
     hotkeys();
     ini();
     values();
     plans();
+    keepBindings();
     profilePaths();
     compressedProfiles();
     printf("essentials_test: %d passed, %d failed\n", g_pass, g_fail);

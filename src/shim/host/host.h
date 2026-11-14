@@ -12,4 +12,7 @@ namespace horizon {
 // Login fix for ESWC and TM Original: TLS 1.0 for WinINet in this process and no revocation check on the
 // game's HTTPS requests (iatSlot: link address of the exe's HttpOpenRequestA import slot).
 void onlineFixInstall(uintptr_t exeBase, uintptr_t iatSlot);
+// Sunrise and Original: the game resets all bindings when it loads the profiles; this keeps the saved ones
+// (vendor/horizon/host/keepbindings.cpp). original: TM Original, else TM Sunrise.
+bool keepBindingsInstall(uintptr_t exeBase, bool original);
 } // namespace horizon

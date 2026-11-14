@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Saved bindings are kept on Sunrise and Original** (`KeepBindings=1` in `[controller]`, default). Both games reset every key and pad binding to the defaults when they start (a game bug: the profile flag that should prevent it is never saved). One call in the game's profile load is redirected to the defaults pass alone, as ESWC does: saved bindings stay, devices without bindings get the defaults. Bytes checked first; nothing changes if they differ or the profiles are loaded already. With the Horizon Client, its own copy (`KeepBindings` in its host.json) is used. The Horizon Client's code, the same file. Not tested in the game yet.
 - **Log for "my pad bindings are reset at every start"** (log only, nothing changed): at start the profile folder (`GameData\Profiles` next to the exe) with whether it is under Program Files, whether the game may write there, UAC virtualization of the game process and a VirtualStore copy of the folder, and each profile with size and time. While the game runs, every profile save (`profiles: profile saved by the game: ...`) and whether the saved profile names the pads (their bindings are stored under the DirectInput instance GUID). The controller fix logs each pad's bindings in the current profile once at start (`bindings at start: ...`). A last line `game closed normally` when the game exits by itself; without it the game was killed or crashed. No profile contents are logged. The Horizon Client's controller fix, the same code.
 
 ## 1.3.1

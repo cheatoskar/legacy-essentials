@@ -3,6 +3,7 @@
 //     the late-pad bindings' signatures (Binder::verify)
 //   - the login fix's import slots: ESWC 0x00aca340 and Original 0x00a162d4 are the exe's HttpOpenRequestA slot
 //   - the menu's way in: the exe imports Direct3DCreate9 or GetProcAddress
+//   - keep bindings: the bytes at the profile load's reset call (Sunrise, Original)
 //   - the game settings' table: PE timestamp, the code, pointer and reflection-member signatures of the volumes and
 //     of the window mode and of the game's own fullscreen switch (gs::Game::audioOk / displayOk / toggleOk)
 // The exe image is laid out at its link address 0x400000 in this process (the exes have no relocations).
@@ -18,6 +19,9 @@
 
 #include "../vendor/horizon/controller-hotplug/hp_game.h"
 #include "../vendor/horizon/game-settings/gs_game.h"
+#include "../vendor/horizon/host/keepbindings_sites.h"
+#include "../src/log.h"
+#include "../src/shim/host/host.h"
 
 #include <set>
 
@@ -120,6 +124,28 @@ static bool runOne(const wchar_t* path, const char* game) {
         const DWORD want = strcmp(game, "eswc") == 0 ? 0x00aca340 - 0x400000 : 0x00a162d4 - 0x400000;
         check(iatRva(img, "WININET.dll", "HttpOpenRequestA") == want, "login fix: HttpOpenRequestA import slot as in essentials.cpp");
     }
+    if (strcmp(game, "sunrise") == 0 || strcmp(game, "original") == 0) {
+        const horizon::keepbind::Site& s = strcmp(game, "original") == 0 ? horizon::keepbind::original() : horizon::keepbind::sunrise();
+        check(horizon::keepbind::check(s, img + (s.call - 10 - 0x400000)) == horizon::keepbind::State::Original,
+              "keep bindings: the profile load's reset call is the one the fix redirects");
+        // the real install on this copy of the image (no app yet: its global is 0 in the file)
+        const uintptr_t imgBase = reinterpret_cast<uintptr_t>(img);
+        const bool orig = strcmp(game, "original") == 0;
+        check(horizon::keepBindingsInstall(imgBase, orig) &&
+                  horizon::keepbind::check(s, img + (s.call - 10 - 0x400000)) == horizon::keepbind::State::Kept,
+              "keep bindings: installed on the image, the call now goes to the defaults pass");
+        check(horizon::keepBindingsInstall(imgBase, orig), "keep bindings: a second install sees it done and changes nothing");
+        const uint32_t app = static_cast<uint32_t>(imgBase + 0x100); // a fake app with 1 loaded profile
+        memcpy(img + (s.appGlobal - 0x400000), &app, 4);
+        const uint32_t one = 1;
+        memcpy(img + 0x100 + s.appProfiles, &one, 4);
+        uint8_t back[5];
+        horizon::keepbind::callBytes(s.call, s.resetFn, back);
+        memcpy(img + (s.call - 0x400000), back, 5);
+        check(!horizon::keepBindingsInstall(imgBase, orig) &&
+                  horizon::keepbind::check(s, img + (s.call - 10 - 0x400000)) == horizon::keepbind::State::Original,
+              "keep bindings: profiles already loaded -> too late, nothing changed");
+    }
     const bool d3d = iatRva(img, "d3d9.dll", "Direct3DCreate9") != 0;
     const bool gpa = iatRva(img, "KERNEL32.dll", "GetProcAddress") != 0;
     printf("      imports: Direct3DCreate9 %s, GetProcAddress %s\n", d3d ? "yes" : "no", gpa ? "yes" : "no");
@@ -129,6 +155,7 @@ static bool runOne(const wchar_t* path, const char* game) {
 }
 
 int wmain(int argc, wchar_t** argv) {
+    autosave::logOpen(); // the keep-bindings lines: eswc_autosave.log next to this exe
     if (argc < 3) {
         printf("realexe_test.exe <exe> eswc|sunrise|original [...]\n");
         return 2;

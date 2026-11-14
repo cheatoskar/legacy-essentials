@@ -343,6 +343,12 @@ void start(const ExeId& exe, const Settings& settings, uintptr_t exeBase, DWORD 
     }
     // log only: the profile folder, write access, VirtualStore, and from now on every profile save
     profilediag::start();
+    // saved bindings (Sunrise, Original): before the game loads the profiles, so at start, not on the first message
+    if (g_exe->game == Game::Sunrise || g_exe->game == Game::Original) {
+        if (plan.horizon) AS_LOG("bindings: the Horizon Client's own (KeepBindings in its host.json); ours stays off");
+        else if (!g_set.keepBindings) AS_LOG("bindings: KeepBindings=0, the game resets the bindings at every start as before");
+        else horizon::keepBindingsInstall(g_base, g_exe->game == Game::Original);
+    }
     // volumes and window mode: into the game's settings now, before it makes its Direct3D device and audio
     gamesettings::start(g_base, g_timestamp, g_set, plan.gameSettings, plan.menu);
     if (plan.menu) overlay::install(g_set.menuKey, &drawMenu);

@@ -139,6 +139,7 @@ void loadSettings(const wchar_t* path, Settings* s, bool* existed) {
     s->tmxCopy = GetPrivateProfileIntW(L"autosave", L"TmxCopy", 1, path) != 0;
     s->onlineFix = GetPrivateProfileIntW(L"online", L"OnlineFix", 1, path) != 0;
     s->controllerFix = GetPrivateProfileIntW(L"controller", L"ControllerFix", 1, path) != 0;
+    s->keepBindings = GetPrivateProfileIntW(L"controller", L"KeepBindings", 1, path) != 0;
     GetPrivateProfileStringW(L"menu", L"MenuKey", L"Ctrl+F2", key, 64, path);
     Hotkey k;
     if (parseHotkey(key, &k)) s->menuKey = k; // not understood: the default stays

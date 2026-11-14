@@ -25,7 +25,7 @@ lib /nologo /OUT:build\imgui.lib build\imgui\*.obj || exit /b 1
 :imguidone
 
 rem the Horizon Client's login fix and controller fix, unchanged (onlinefix.cpp gets src\shim\host\host.h)
-%CXX% /Isrc\shim /Fo"build\horizon\\" vendor\horizon\host\onlinefix.cpp vendor\horizon\controller-hotplug\hp_tracker.cpp vendor\horizon\controller-hotplug\hp_enum.cpp vendor\horizon\controller-hotplug\hp_bind.cpp vendor\horizon\controller-hotplug\hp_game.cpp vendor\horizon\controller-hotplug\hp_watch.cpp vendor\horizon\controller-hotplug\hp_service.cpp || exit /b 1
+%CXX% /Isrc\shim /Fo"build\horizon\\" vendor\horizon\host\onlinefix.cpp vendor\horizon\host\keepbindings.cpp vendor\horizon\controller-hotplug\hp_tracker.cpp vendor\horizon\controller-hotplug\hp_enum.cpp vendor\horizon\controller-hotplug\hp_bind.cpp vendor\horizon\controller-hotplug\hp_game.cpp vendor\horizon\controller-hotplug\hp_watch.cpp vendor\horizon\controller-hotplug\hp_service.cpp || exit /b 1
 rem ... and its game settings (volumes, window mode)
 %CXX% /Fo"build\horizon\\" vendor\horizon\game-settings\gs_game.cpp vendor\horizon\game-settings\gs_master.cpp || exit /b 1
 
@@ -45,7 +45,7 @@ rem the Horizon Client's controller-fix unit tests, on the vendored code
 rem the vendored code against the real exes on disk (read only): realexe_test.exe <exe> eswc|sunrise|original ...
 rem the Horizon Client's game-settings unit tests, on the vendored code
 %TCXX% /WX /Fo"build\test\\" /Fe"build\test\gs_tests.exe" vendor\horizon\game-settings\tests\gs_tests.cpp build\horizon\gs_*.obj user32.lib ole32.lib || exit /b 1
-%TCXX% /WX /Fo"build\test\\" /Fe"build\test\realexe_test.exe" test\realexe_test.cpp build\horizon\hp_*.obj build\horizon\gs_*.obj user32.lib ole32.lib dxguid.lib setupapi.lib /link /BASE:0x30000000 || exit /b 1
+%TCXX% /WX /Fo"build\test\\" /Fe"build\test\realexe_test.exe" test\realexe_test.cpp src\log.cpp build\horizon\hp_*.obj build\horizon\gs_*.obj build\horizon\keepbindings.obj user32.lib ole32.lib dxguid.lib setupapi.lib /link /BASE:0x30000000 || exit /b 1
 rem profile diagnostics on a profile folder next to the test exe
 %TCXX% /WX /Fo"build\test\\" /Fe"build\test\profilediag_test.exe" test\profilediag_test.cpp src\profilediag.cpp src\log.cpp src\lzo.cpp advapi32.lib || exit /b 1
 rem settings, menu key, Horizon Client coexistence plan

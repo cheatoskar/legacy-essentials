@@ -202,6 +202,7 @@ int wmain() {
     // a Sunrise-like exe id (no login fix), the defaults (menu key Ctrl+F2)
     static const autosave::ExeId kTestExe = {autosave::Game::Sunrise, "menu_test.exe", "", 0, 0};
     autosave::Settings set;
+    set.keepBindings = false; // this exe has none of Sunrise's code at the call
     autosave::essentials::start(kTestExe, set, reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)), GetCurrentThreadId());
     check(autosave::overlay::installed(), "overlay installed (standalone, menu key set)");
     // the game settings once more, on a fake Sunrise game (this exe is not a game: its rows would say Unavailable)

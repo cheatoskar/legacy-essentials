@@ -22,6 +22,7 @@ struct Settings {
     bool onlineFix = true;    // OnlineFix (ESWC, Original)
     // [controller]
     bool controllerFix = true; // ControllerFix
+    bool keepBindings = true;  // KeepBindings (Sunrise, Original: the game resets the bindings at every start)
     // [menu]
     Hotkey menuKey;           // MenuKey, default Ctrl+F2
     // [sound], [display]: written into the game's own settings at every start; -1 = the game's own (empty key)
