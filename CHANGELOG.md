@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.0 (2026-11-14)
 
 Tested in the game on Sunrise (2026-11-14): the bindings are kept after a restart. Login fix: it installs in the game and the game's first request goes out through it (TLS 1.0 added for the process); a full online login and the name redirect without a hosts-file entry are not tested yet.
 
